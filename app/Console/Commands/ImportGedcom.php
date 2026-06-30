@@ -31,12 +31,17 @@ class ImportGedcom extends Command
         $this->info('People found: '.count($this->people));
         $this->info('Families found: '.count($this->families));
 
-        if ($this->option('fresh')) {
-            DB::table('family_events')->truncate();
-            DB::table('parent_children')->truncate();
-            DB::table('partnerships')->truncate();
-            DB::table('people')->truncate();
-        }
+    if ($this->option('fresh')) {
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+
+        DB::table('family_events')->delete();
+        DB::table('parent_children')->delete();
+        DB::table('partnerships')->delete();
+        DB::table('telegram_users')->update(['person_id' => null]);
+        DB::table('people')->delete();
+
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+    }
 
         DB::transaction(function () {
             $this->importPeople();
