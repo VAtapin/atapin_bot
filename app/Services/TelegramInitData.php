@@ -30,11 +30,6 @@ class TelegramInitData
         $secretKey = hash_hmac('sha256', $botToken, 'WebAppData', true);
         $expectedHash = hash_hmac('sha256', $checkString, $secretKey);
 
-        logger()->info([
-    'received_hash' => $hash,
-    'expected_hash' => $expectedHash,
-    'check_string' => $checkString,
-]);
 
         if (! hash_equals($expectedHash, $hash)) {
             throw new InvalidArgumentException('Telegram initData signature is invalid.');
