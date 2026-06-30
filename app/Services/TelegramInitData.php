@@ -14,7 +14,9 @@ class TelegramInitData
 
         parse_str($initData, $data);
         $hash = $data['hash'] ?? null;
-        unset($data['hash'], $data['signature']);
+        #unset($data['hash'], $data['signature']);
+        
+        unset($data['hash']);
 
         if (! is_string($hash)) {
             throw new InvalidArgumentException('Telegram initData hash is missing.');
