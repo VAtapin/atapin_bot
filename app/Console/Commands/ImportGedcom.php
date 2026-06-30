@@ -330,7 +330,7 @@ class ImportGedcom extends Command
                 return null;
             }
 
-            $path = 'people/gedcom/'.Str::slug($gedcomId).'.jpg';
+            $path = 'people/photos/'.Str::slug($gedcomId).'.jpg';
 
             Storage::disk('public')->put($path, $response->body());
 
