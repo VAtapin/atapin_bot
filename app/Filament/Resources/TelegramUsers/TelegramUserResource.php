@@ -58,6 +58,10 @@ class TelegramUserResource extends Resource
                     ->label('Фамилия в Telegram'),
                 TextInput::make('language_code')
                     ->label('Язык'),
+                TextInput::make('photo_url')
+                    ->label('Фото Telegram')
+                    ->url()
+                    ->disabled(),
                 Select::make('status')
                     ->label('Доступ')
                     ->options([
@@ -72,6 +76,9 @@ class TelegramUserResource extends Resource
                     ->required(),
                 DateTimePicker::make('last_seen_at')
                     ->label('Последняя активность')
+                    ->disabled(),
+                DateTimePicker::make('last_web_login_at')
+                    ->label('Последний вход на сайт')
                     ->disabled(),
             ]);
     }
@@ -111,6 +118,10 @@ class TelegramUserResource extends Resource
                     ->boolean(),
                 TextColumn::make('last_seen_at')
                     ->label('Последняя активность')
+                    ->dateTime('d.m.Y H:i')
+                    ->sortable(),
+                TextColumn::make('last_web_login_at')
+                    ->label('Вход на сайт')
                     ->dateTime('d.m.Y H:i')
                     ->sortable(),
                 TextColumn::make('created_at')

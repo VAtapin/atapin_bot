@@ -18,12 +18,13 @@ class MiniAppController extends Controller
     {
         return view('family.app', [
             'familyName' => Setting::value('family_name', 'Наша семья'),
+            'telegramAuthError' => session('telegram_auth_error'),
         ]);
     }
 
     public function tree(Request $request): JsonResponse
     {
-        $people = Person::query()
+        $query = Person::query()
             ->where('is_published', true)
             ->when($request->string('q')->trim()->isNotEmpty(), function (Builder $query) use ($request): void {
                 $term = '%'.$request->string('q')->trim().'%';
@@ -44,10 +45,49 @@ class MiniAppController extends Controller
             })
             ->when($request->integer('birth_month') > 0, fn (Builder $query) => $query->whereMonth('birth_date', $request->integer('birth_month')))
             ->orderBy('sort_order')
-            ->orderBy('birth_date')
-            ->get();
+            ->orderBy('birth_date');
+
+        $totalPeople = Person::query()->where('is_published', true)->count();
+        $focusId = $request->integer('focus') ?: null;
+        $telegramUser = $request->attributes->get('telegramUser');
+
+        if (! $focusId && $telegramUser?->person_id) {
+            $focusId = $telegramUser->person_id;
+        }
+
+        if (! $focusId) {
+            $focusId = (int) Setting::value(
+                'tree_default_person_id',
+                Person::query()
+                    ->where('is_published', true)
+                    ->whereNotNull('birth_date')
+                    ->oldest('birth_date')
+                    ->value('id'),
+            );
+        }
+
+        if (
+            $request->string('scope')->toString() !== 'all'
+            && $request->string('q')->trim()->isEmpty()
+            && $focusId
+        ) {
+            $query->whereIn('id', $this->familyBranchIds(
+                $focusId,
+                min(max($request->integer('depth', 2), 1), 5),
+            ));
+        }
+
+        $people = $query->get();
 
         $ids = $people->pluck('id');
+        $parentChild = ParentChild::query()
+            ->whereIn('parent_id', $ids)
+            ->whereIn('child_id', $ids)
+            ->get(['parent_id', 'child_id', 'type']);
+        $partnerships = Partnership::query()
+            ->whereIn('partner_one_id', $ids)
+            ->whereIn('partner_two_id', $ids)
+            ->get(['partner_one_id', 'partner_two_id', 'status']);
 
         return response()->json([
             'people' => $people->map(fn (Person $person): array => [
@@ -59,19 +99,19 @@ class MiniAppController extends Controller
                 'death_date' => $person->death_date?->toDateString(),
                 'life_years' => $person->life_years,
                 'birth_place' => $person->birth_place,
+                'death_place' => $person->death_place,
+                'burial_place' => $person->burial_place,
                 'city' => $person->current_city,
+                'address' => $person->current_address,
                 'occupation' => $person->occupation,
                 'bio' => $person->bio,
                 'photo_url' => $person->photo_url,
             ]),
-            'parent_child' => ParentChild::query()
-                ->whereIn('parent_id', $ids)
-                ->whereIn('child_id', $ids)
-                ->get(['parent_id', 'child_id', 'type']),
-            'partnerships' => Partnership::query()
-                ->whereIn('partner_one_id', $ids)
-                ->whereIn('partner_two_id', $ids)
-                ->get(['partner_one_id', 'partner_two_id', 'status']),
+            'parent_child' => $parentChild,
+            'partnerships' => $partnerships,
+            'focus_id' => $focusId ? (string) $focusId : null,
+            'total_people' => $totalPeople,
+            'shown_people' => $people->count(),
             'filters' => [
                 'cities' => Person::query()
                     ->where('is_published', true)
@@ -81,6 +121,49 @@ class MiniAppController extends Controller
                     ->pluck('current_city'),
             ],
         ]);
+    }
+
+    private function familyBranchIds(int $focusId, int $depth): array
+    {
+        $parentLinks = ParentChild::query()->get(['parent_id', 'child_id']);
+        $partnerships = Partnership::query()->get(['partner_one_id', 'partner_two_id']);
+        $adjacency = [];
+
+        foreach ($parentLinks as $link) {
+            $adjacency[$link->parent_id][] = $link->child_id;
+            $adjacency[$link->child_id][] = $link->parent_id;
+        }
+
+        foreach ($partnerships as $partnership) {
+            $adjacency[$partnership->partner_one_id][] = $partnership->partner_two_id;
+            $adjacency[$partnership->partner_two_id][] = $partnership->partner_one_id;
+        }
+
+        $visited = [$focusId => true];
+        $frontier = [$focusId];
+
+        for ($level = 0; $level < $depth; $level++) {
+            $next = [];
+
+            foreach ($frontier as $personId) {
+                foreach ($adjacency[$personId] ?? [] as $relativeId) {
+                    if (isset($visited[$relativeId])) {
+                        continue;
+                    }
+
+                    $visited[$relativeId] = true;
+                    $next[] = $relativeId;
+                }
+            }
+
+            $frontier = $next;
+
+            if ($frontier === []) {
+                break;
+            }
+        }
+
+        return array_keys($visited);
     }
 
     public function birthdays(): JsonResponse

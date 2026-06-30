@@ -75,11 +75,26 @@ class MiniAppTest extends TestCase
             ->assertJsonPath('status', 'pending');
     }
 
+    public function test_approved_browser_session_can_read_family_data_without_init_data(): void
+    {
+        $user = TelegramUser::query()->create([
+            'telegram_user_id' => 77,
+            'status' => 'approved',
+        ]);
+        Person::factory()->create();
+
+        $this->withSession(['family_telegram_user_id' => $user->id])
+            ->getJson('/api/family/tree')
+            ->assertOk()
+            ->assertJsonCount(1, 'people');
+    }
+
     private function signedInitData(int $userId): string
     {
         $data = [
             'auth_date' => (string) time(),
             'query_id' => 'test-query',
+            'signature' => 'telegram-ed25519-signature',
             'user' => json_encode([
                 'id' => $userId,
                 'first_name' => 'Анна',

@@ -46,6 +46,12 @@ return [
             explode(',', (string) env('TELEGRAM_ADMIN_IDS', '')),
         ))),
         'dev_user_id' => env('TELEGRAM_DEV_USER_ID'),
+        'oidc_client_id' => env('TELEGRAM_OIDC_CLIENT_ID'),
+        'oidc_client_secret' => env('TELEGRAM_OIDC_CLIENT_SECRET'),
+        'oidc_redirect_uri' => env('TELEGRAM_OIDC_REDIRECT_URI'),
+        'oidc_authorize_url' => 'https://oauth.telegram.org/auth',
+        'oidc_token_url' => 'https://oauth.telegram.org/token',
+        'oidc_jwks_url' => 'https://oauth.telegram.org/.well-known/jwks.json',
     ],
 
 ];

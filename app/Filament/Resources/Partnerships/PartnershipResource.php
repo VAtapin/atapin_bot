@@ -25,6 +25,8 @@ class PartnershipResource extends Resource
 {
     protected static ?string $model = Partnership::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedHeart;
 
     protected static ?string $modelLabel = 'союз';

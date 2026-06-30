@@ -6,6 +6,11 @@
     <meta name="theme-color" content="#f6f2e9">
     <title>Семейное древо</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        window.familyAppConfig = @json([
+            'authError' => $telegramAuthError,
+        ]);
+    </script>
     @vite(['resources/js/app.js'])
 </head>
 <body>
@@ -41,11 +46,24 @@
                     <option value="1">Ныне живущие</option>
                     <option value="0">Ушедшие</option>
                 </select>
+                <select name="depth" aria-label="Глубина ветви">
+                    <option value="1">1 поколение</option>
+                    <option value="2" selected>2 поколения</option>
+                    <option value="3">3 поколения</option>
+                    <option value="4">4 поколения</option>
+                </select>
                 <button id="reset-filters" type="button" title="Сбросить фильтры">↺</button>
             </form>
 
             <div id="tree" aria-label="Семейное древо"></div>
-            <button id="fit-tree" class="icon-button fit-button" type="button">Показать всё</button>
+            <div id="tree-meta" class="tree-meta"></div>
+            <div class="tree-controls">
+                <button id="zoom-out" class="icon-button" type="button" aria-label="Уменьшить">−</button>
+                <button id="zoom-in" class="icon-button" type="button" aria-label="Увеличить">+</button>
+                <button id="fit-tree" class="icon-button fit-button" type="button">Вписать ветвь</button>
+                <button id="my-branch" class="icon-button fit-button" type="button">Моя ветвь</button>
+                <button id="all-tree" class="icon-button fit-button" type="button">Всё дерево</button>
+            </div>
             <div id="empty" class="empty" hidden>
                 <strong>Никого не найдено</strong>
                 <span>Попробуйте изменить фильтры.</span>
@@ -59,7 +77,10 @@
     </main>
 
     <div id="loading" class="loading" aria-label="Загрузка"></div>
-    <div id="error" class="error" hidden><span id="error-message"></span></div>
+    <div id="error" class="error" hidden>
+        <span id="error-message"></span>
+        <div id="error-actions" class="error-actions"></div>
+    </div>
 
     <aside id="person-sheet" class="sheet" hidden>
         <article class="sheet-card">

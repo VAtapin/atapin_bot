@@ -5,6 +5,9 @@ namespace App\Filament\Resources\People;
 use App\Filament\Resources\People\Pages\CreatePerson;
 use App\Filament\Resources\People\Pages\EditPerson;
 use App\Filament\Resources\People\Pages\ListPeople;
+use App\Filament\Resources\People\RelationManagers\ChildLinksRelationManager;
+use App\Filament\Resources\People\RelationManagers\ParentLinksRelationManager;
+use App\Filament\Resources\People\RelationManagers\PartnershipsRelationManager;
 use App\Models\Person;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
@@ -59,6 +62,8 @@ class PersonResource extends Resource
                     ->required(),
                 TextInput::make('maiden_name')
                     ->label('Девичья фамилия'),
+                TextInput::make('married_name')
+                    ->label('Фамилия в браке'),
                 Select::make('gender')
                     ->label('Пол')
                     ->options([
@@ -75,10 +80,17 @@ class PersonResource extends Resource
                     ->label('Дата смерти')
                     ->native(false)
                     ->afterOrEqual('birth_date'),
+                TextInput::make('death_place')
+                    ->label('Место смерти'),
+                TextInput::make('burial_place')
+                    ->label('Место захоронения'),
                 TextInput::make('birth_place')
                     ->label('Место рождения'),
                 TextInput::make('current_city')
                     ->label('Город проживания'),
+                Textarea::make('current_address')
+                    ->label('Адрес проживания')
+                    ->rows(2),
                 TextInput::make('occupation')
                     ->label('Род занятий'),
                 Textarea::make('bio')
@@ -101,6 +113,10 @@ class PersonResource extends Resource
                     ->required()
                     ->numeric()
                     ->default(0),
+                TextInput::make('gedcom_id')
+                    ->label('ID в GEDCOM')
+                    ->disabled()
+                    ->dehydrated(false),
             ]);
     }
 
@@ -187,7 +203,9 @@ class PersonResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            ParentLinksRelationManager::class,
+            PartnershipsRelationManager::class,
+            ChildLinksRelationManager::class,
         ];
     }
 

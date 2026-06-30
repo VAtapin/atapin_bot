@@ -21,6 +21,10 @@ Telegram-бот и Telegram Mini App для большой семьи.
 - фильтрация по полу, городу и статусу;
 - ближайшие дни рождения;
 - команда `/birthdays`;
+- команды `/person`, `/family`, `/me`, `/events` и `/stats`;
+- отдельная семейная ветвь выбранного человека;
+- вход на сайт через Telegram OpenID Connect;
+- повторяемый импорт GEDCOM с адресами и исходными данными;
 - ежедневные уведомления о днях рождения;
 - семейные Telegram-группы;
 - ручное подтверждение пользователей;
@@ -153,6 +157,11 @@ TELEGRAM_BOT_USERNAME=atapin_bot
 TELEGRAM_WEBHOOK_SECRET=********
 TELEGRAM_MINI_APP_URL=https://example.com/family
 TELEGRAM_ADMIN_IDS=123456789
+
+# BotFather → Bot Settings → Web Login
+TELEGRAM_OIDC_CLIENT_ID=123456789
+TELEGRAM_OIDC_CLIENT_SECRET=********
+TELEGRAM_OIDC_REDIRECT_URI=https://example.com/auth/telegram/callback
 ```
 
 ---
@@ -246,6 +255,15 @@ https://
 ```
 /family
 ```
+
+В **Bot Settings → Web Login** добавьте:
+
+- Allowed URL: `https://example.com`
+- Redirect URI: `https://example.com/auth/telegram/callback`
+
+Полученные Client ID и Client Secret внесите в `.env`. После первого входа
+пользователь появится в разделе «Доступ пользователей». Привяжите его к
+карточке человека и установите статус «Разрешён».
 
 ---
 
@@ -342,6 +360,49 @@ https://example.com/admin
 - убедиться, что Webhook зарегистрирован;
 
 - убедиться, что Cron выполняется.
+
+---
+
+# Импорт GEDCOM
+
+Файл можно положить в `storage/app/import`, например:
+
+```bash
+php artisan gedcom:import family.ged --dry-run
+```
+
+Команда сначала покажет, сколько людей, семей, мест и фотографий реально
+присутствует в файле, не меняя базу.
+
+Старый импорт не содержал GEDCOM ID. Поэтому для первого запуска нового
+импортёра обязательно сделайте резервную копию базы, затем выполните:
+
+```bash
+php artisan gedcom:import family.ged --fresh --photos
+```
+
+`--fresh` заменяет людей и семейные связи, но сохраняет администраторов,
+Telegram-пользователей и группы; привязки Telegram к карточкам людей будут
+сброшены, потому что ID карточек создаются заново.
+
+Последующие импорты выполняются без `--fresh`:
+
+```bash
+php artisan gedcom:import family.ged --photos
+```
+
+Они обновляют записи по `GEDCOM ID`, не создавая дублей. Импортируются:
+
+- места рождения, смерти и захоронения;
+- `RESI`, `ADDR`, `ADR1`, `CITY`, страна и индекс;
+- фамилия в браке, профессия, заметки и фотографии;
+- даты и места брака/развода;
+- полный исходный GEDCOM-блок каждой карточки в `gedcom_data`.
+
+Импортёр не придумывает отсутствующие данные. В текущем `family.ged` есть
+386 человек, 147 семей и 36 записей проживания, но только 4 явных поля
+`CITY`; остальные города потребуется заполнить вручную, если их нет в
+`PLAC/ADDR`.
 
 ---
 

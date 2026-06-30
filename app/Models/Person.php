@@ -19,16 +19,23 @@ class Person extends Model
 
     protected $fillable = [
         'first_name',
+        'gedcom_id',
         'middle_name',
         'last_name',
         'maiden_name',
+        'married_name',
         'gender',
         'birth_date',
         'death_date',
+        'death_place',
+        'burial_place',
         'birth_place',
         'current_city',
+        'current_address',
         'occupation',
         'bio',
+        'gedcom_data',
+        'imported_at',
         'photo_path',
         'is_published',
         'sort_order',
@@ -39,6 +46,8 @@ class Person extends Model
         return [
             'birth_date' => 'date',
             'death_date' => 'date',
+            'gedcom_data' => 'array',
+            'imported_at' => 'datetime',
             'is_published' => 'boolean',
         ];
     }
@@ -106,6 +115,16 @@ class Person extends Model
     public function telegramUsers(): HasMany
     {
         return $this->hasMany(TelegramUser::class);
+    }
+
+    public function partnershipsAsOne(): HasMany
+    {
+        return $this->hasMany(Partnership::class, 'partner_one_id');
+    }
+
+    public function partnershipsAsTwo(): HasMany
+    {
+        return $this->hasMany(Partnership::class, 'partner_two_id');
     }
 
     public function events(): HasMany

@@ -14,8 +14,6 @@ class TelegramInitData
 
         parse_str($initData, $data);
         $hash = $data['hash'] ?? null;
-        #unset($data['hash'], $data['signature']);
-        
         unset($data['hash']);
 
         if (! is_string($hash)) {
@@ -29,8 +27,6 @@ class TelegramInitData
 
         $secretKey = hash_hmac('sha256', $botToken, 'WebAppData', true);
         $expectedHash = hash_hmac('sha256', $checkString, $secretKey);
-
-
         if (! hash_equals($expectedHash, $hash)) {
             throw new InvalidArgumentException('Telegram initData signature is invalid.');
         }

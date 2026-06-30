@@ -9,6 +9,8 @@ const state = {
     cytoscape: null,
     people: new Map(),
     activeTab: 'tree',
+    scope: 'branch',
+    focusId: new URLSearchParams(window.location.search).get('focus'),
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -38,7 +40,9 @@ async function api(path) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-        throw new Error(data.message || 'Не удалось загрузить данные');
+        const error = new Error(data.message || 'Не удалось загрузить данные');
+        error.payload = data;
+        throw error;
     }
 
     return data;
@@ -48,8 +52,11 @@ function setLoading(isLoading) {
     $('#loading').hidden = !isLoading;
 }
 
-function showError(message) {
+function showError(message, payload = {}) {
     $('#error-message').textContent = message;
+    $('#error-actions').innerHTML = payload.login_url
+        ? `<a class="telegram-login" href="${escapeHtml(payload.login_url)}">Войти через Telegram</a>`
+        : '';
     $('#error').hidden = false;
     setLoading(false);
 }
@@ -142,8 +149,8 @@ function renderTree(data) {
             {
                 selector: 'node.person',
                 style: {
-                    width: 150,
-                    height: 66,
+                    width: 190,
+                    height: 84,
                     shape: 'round-rectangle',
                     'background-color': '#fffdf8',
                     'border-color': '#d7cbb9',
@@ -151,10 +158,10 @@ function renderTree(data) {
                     label: 'data(label)',
                     color: '#2b251e',
                     'font-family': 'system-ui, sans-serif',
-                    'font-size': 11,
+                    'font-size': 13,
                     'font-weight': 650,
                     'text-wrap': 'wrap',
-                    'text-max-width': 105,
+                    'text-max-width': 145,
                     'text-valign': 'center',
                     'text-halign': 'center',
                     'text-margin-x': 0,
@@ -170,13 +177,13 @@ function renderTree(data) {
                 style: {
                     'background-image': 'data(photo)',
                     'background-fit': 'cover',
-                    'background-width': 50,
-                    'background-height': 50,
+                    'background-width': 66,
+                    'background-height': 66,
                     'background-position-x': 9,
                     'background-position-y': '50%',
                     'background-clip': 'none',
                     'text-halign': 'center',
-                    'text-margin-x': 24,
+                    'text-margin-x': 31,
                 },
             },
             {
@@ -235,15 +242,27 @@ function renderTree(data) {
         layout: {
             name: 'dagre',
             rankDir: 'TB',
-            rankSep: 80,
-            nodeSep: 34,
+            rankSep: 115,
+            nodeSep: 58,
             edgeSep: 18,
             padding: 45,
         },
     });
 
     state.cytoscape.on('tap', 'node.person', (event) => showPerson(event.target.id()));
-    state.cytoscape.fit(undefined, 36);
+    const focusNode = data.focus_id ? state.cytoscape.getElementById(String(data.focus_id)) : null;
+
+    state.cytoscape.fit(undefined, 48);
+
+    if (state.cytoscape.zoom() < 0.68 && focusNode?.length) {
+        state.cytoscape.zoom(0.68);
+        state.cytoscape.center(focusNode);
+    }
+
+    if (state.scope === 'all' && focusNode?.length) {
+        state.cytoscape.zoom(0.8);
+        state.cytoscape.center(focusNode);
+    }
 }
 
 function showPerson(id) {
@@ -258,7 +277,10 @@ function showPerson(id) {
         person.life_years && ['Годы жизни', person.life_years],
         person.maiden_name && ['Девичья фамилия', person.maiden_name],
         person.birth_place && ['Место рождения', person.birth_place],
+        person.death_place && ['Место смерти', person.death_place],
+        person.burial_place && ['Место захоронения', person.burial_place],
         person.city && ['Город', person.city],
+        person.address && ['Адрес', person.address],
         person.occupation && ['Род занятий', person.occupation],
     ].filter(Boolean);
 
@@ -274,7 +296,15 @@ function showPerson(id) {
             ${facts.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}
         </dl>
         ${person.bio ? `<p class="person-bio">${escapeHtml(person.bio)}</p>` : ''}
+        <button id="person-focus" class="person-focus" type="button">Показать семейную ветвь</button>
     `;
+    $('#person-focus').addEventListener('click', () => {
+        state.focusId = String(person.id);
+        state.scope = 'branch';
+        $('#filters [name="q"]').value = '';
+        $('#person-sheet').hidden = true;
+        loadTree();
+    });
     $('#person-sheet').hidden = false;
 }
 
@@ -286,6 +316,9 @@ function treeQuery() {
         if (value !== '') query.set(key, value);
     }
 
+    query.set('scope', state.scope);
+    if (state.focusId) query.set('focus', state.focusId);
+
     return query.toString();
 }
 
@@ -295,10 +328,12 @@ async function loadTree() {
 
     try {
         const data = await api(`/api/family/tree?${treeQuery()}`);
+        state.focusId = data.focus_id;
         renderTree(data);
         fillCities(data.filters.cities);
+        $('#tree-meta').textContent = `Показано ${data.shown_people} из ${data.total_people}`;
     } catch (error) {
-        showError(error.message);
+        showError(error.message, error.payload);
     } finally {
         setLoading(false);
     }
@@ -337,7 +372,7 @@ async function loadBirthdays() {
             `).join('')
             : '<p class="empty-list">Дни рождения пока не добавлены.</p>';
     } catch (error) {
-        showError(error.message);
+        showError(error.message, error.payload);
     } finally {
         setLoading(false);
     }
@@ -366,6 +401,25 @@ $('#reset-filters').addEventListener('click', () => {
     loadTree();
 });
 $('#fit-tree').addEventListener('click', () => state.cytoscape?.fit(undefined, 36));
+$('#zoom-in').addEventListener('click', () => state.cytoscape?.zoom({
+    level: Math.min((state.cytoscape?.zoom() ?? 1) * 1.25, 2.5),
+    renderedPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+}));
+$('#zoom-out').addEventListener('click', () => state.cytoscape?.zoom({
+    level: Math.max((state.cytoscape?.zoom() ?? 1) / 1.25, 0.25),
+    renderedPosition: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+}));
+$('#my-branch').addEventListener('click', () => {
+    state.scope = 'branch';
+    state.focusId = null;
+    $('#filters [name="q"]').value = '';
+    loadTree();
+});
+$('#all-tree').addEventListener('click', () => {
+    state.scope = 'all';
+    $('#filters [name="q"]').value = '';
+    loadTree();
+});
 $('#close-person').addEventListener('click', () => { $('#person-sheet').hidden = true; });
 $('#person-sheet').addEventListener('click', (event) => {
     if (event.target.id === 'person-sheet') event.currentTarget.hidden = true;
@@ -373,5 +427,9 @@ $('#person-sheet').addEventListener('click', (event) => {
 document.querySelectorAll('[data-tab]').forEach((button) => {
     button.addEventListener('click', () => switchTab(button.dataset.tab));
 });
+
+if (window.familyAppConfig?.authError) {
+    showError(window.familyAppConfig.authError);
+}
 
 loadTree();

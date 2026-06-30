@@ -1,52 +1,41 @@
 <?php
 
-namespace App\Filament\Resources\ParentChildren;
+namespace App\Filament\Resources\People\RelationManagers;
 
-use App\Filament\Resources\ParentChildren\Pages\CreateParentChild;
-use App\Filament\Resources\ParentChildren\Pages\EditParentChild;
-use App\Filament\Resources\ParentChildren\Pages\ListParentChildren;
-use App\Models\ParentChild;
 use App\Models\Person;
-use BackedEnum;
 use Filament\Actions\BulkActionGroup;
+use Filament\Actions\CreateAction;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
-use Filament\Resources\Resource;
+use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
-class ParentChildResource extends Resource
+class ParentLinksRelationManager extends RelationManager
 {
-    protected static ?string $model = ParentChild::class;
+    protected static string $relationship = 'parentLinks';
 
-    protected static bool $shouldRegisterNavigation = false;
+    protected static ?string $title = 'Родители';
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedArrowLongDown;
+    protected static ?string $modelLabel = 'родителя';
 
-    protected static ?string $modelLabel = 'связь родитель — ребёнок';
+    protected static ?string $pluralModelLabel = 'родители';
 
-    protected static ?string $pluralModelLabel = 'Родители и дети';
-
-    protected static ?string $navigationLabel = 'Родители и дети';
-
-    public static function form(Schema $schema): Schema
+    public function form(Schema $schema): Schema
     {
         return $schema
             ->components([
                 Select::make('parent_id')
                     ->label('Родитель')
-                    ->relationship('parent', 'last_name')
-                    ->getOptionLabelFromRecordUsing(fn (Person $record): string => $record->full_name)
-                    ->searchable(['first_name', 'middle_name', 'last_name'])
-                    ->preload()
-                    ->required(),
-                Select::make('child_id')
-                    ->label('Ребёнок')
-                    ->relationship('child', 'last_name')
+                    ->relationship(
+                        'parent',
+                        'last_name',
+                        modifyQueryUsing: fn ($query) => $query->whereKeyNot($this->getOwnerRecord()->getKey()),
+                    )
                     ->getOptionLabelFromRecordUsing(fn (Person $record): string => $record->full_name)
                     ->searchable(['first_name', 'middle_name', 'last_name'])
                     ->preload()
@@ -67,15 +56,13 @@ class ParentChildResource extends Resource
             ]);
     }
 
-    public static function table(Table $table): Table
+    public function table(Table $table): Table
     {
         return $table
+            ->recordTitleAttribute('parent.full_name')
             ->columns([
                 TextColumn::make('parent.full_name')
                     ->label('Родитель')
-                    ->searchable(['first_name', 'middle_name', 'last_name']),
-                TextColumn::make('child.full_name')
-                    ->label('Ребёнок')
                     ->searchable(['first_name', 'middle_name', 'last_name']),
                 TextColumn::make('type')
                     ->label('Тип')
@@ -99,29 +86,17 @@ class ParentChildResource extends Resource
             ->filters([
                 //
             ])
+            ->headerActions([
+                CreateAction::make()->label('Добавить родителя'),
+            ])
             ->recordActions([
                 EditAction::make(),
+                DeleteAction::make(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
                     DeleteBulkAction::make(),
                 ]),
             ]);
-    }
-
-    public static function getRelations(): array
-    {
-        return [
-            //
-        ];
-    }
-
-    public static function getPages(): array
-    {
-        return [
-            'index' => ListParentChildren::route('/'),
-            'create' => CreateParentChild::route('/create'),
-            'edit' => EditParentChild::route('/{record}/edit'),
-        ];
     }
 }

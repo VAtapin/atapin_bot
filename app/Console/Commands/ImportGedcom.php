@@ -2,18 +2,27 @@
 
 namespace App\Console\Commands;
 
+use App\Models\ParentChild;
+use App\Models\Partnership;
+use App\Models\Person;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Throwable;
 
 class ImportGedcom extends Command
 {
-    protected $signature = 'gedcom:import {file} {--fresh} {--photos}';
+    protected $signature = 'gedcom:import
+        {file : Path to a GEDCOM file}
+        {--fresh : Replace all people and family links}
+        {--photos : Download primary photos}
+        {--dry-run : Parse and report without changing the database}';
 
-    protected $description = 'Import GEDCOM into family archive';
+    protected $description = 'Import people, families, places and all raw facts from GEDCOM';
 
     private array $people = [];
 
@@ -21,69 +30,75 @@ class ImportGedcom extends Command
 
     private array $idMap = [];
 
-    private int $photosFound = 0;
-
-    private int $photosDownloaded = 0;
-
-    private int $photosFailed = 0;
+    private array $stats = [
+        'residences' => 0,
+        'residence_cities' => 0,
+        'birth_places' => 0,
+        'death_places' => 0,
+        'burial_places' => 0,
+        'photos' => 0,
+        'photos_downloaded' => 0,
+        'photos_failed' => 0,
+    ];
 
     public function handle(): int
     {
-        DB::statement('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci');
+        $file = $this->resolveFile((string) $this->argument('file'));
 
-        $file = (string) $this->argument('file');
-
-        if (! file_exists($file)) {
-            $this->error("File not found: {$file}");
+        if (! is_file($file)) {
+            $this->error("Файл не найден: {$file}");
 
             return self::FAILURE;
         }
 
         $this->parseGedcom($file);
+        $this->report();
 
-        $this->info('People found: '.count($this->people));
-        $this->info('Families found: '.count($this->families));
-        $this->info('Photos found: '.$this->photosFound);
+        if ($this->option('dry-run')) {
+            $this->info('Проверка завершена, база данных не изменялась.');
 
-        if ($this->option('fresh')) {
-            $this->freshDatabase();
+            return self::SUCCESS;
+        }
+
+        if (
+            ! $this->option('fresh')
+            && Person::query()->exists()
+            && ! Person::query()->whereNotNull('gedcom_id')->exists()
+        ) {
+            $this->error('В базе уже есть люди из старого импорта без GEDCOM ID.');
+            $this->line('Сделайте резервную копию и выполните первый новый импорт с --fresh.');
+
+            return self::FAILURE;
         }
 
         DB::transaction(function (): void {
+            if ($this->option('fresh')) {
+                $this->freshDatabase();
+            }
+
             $this->importPeople();
             $this->importFamilies();
         });
 
         $this->newLine();
-        $this->info('Import completed.');
-        $this->line('People imported: '.count($this->idMap));
-        $this->line('Families imported: '.count($this->families));
-        $this->line('Photos downloaded: '.$this->photosDownloaded);
-        $this->line('Photos failed: '.$this->photosFailed);
+        $this->info('Импорт завершён.');
+        $this->line('Людей сохранено: '.count($this->idMap));
+        $this->line('Семей обработано: '.count($this->families));
+        $this->line('Фотографий загружено: '.$this->stats['photos_downloaded']);
+        $this->line('Ошибок фотографий: '.$this->stats['photos_failed']);
 
         return self::SUCCESS;
     }
 
-    private function freshDatabase(): void
+    private function resolveFile(string $file): string
     {
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
-
-        DB::table('family_events')->delete();
-        DB::table('parent_children')->delete();
-        DB::table('partnerships')->delete();
-
-        if (DB::getSchemaBuilder()->hasTable('telegram_users')) {
-            DB::table('telegram_users')->update(['person_id' => null]);
+        if (is_file($file)) {
+            return realpath($file) ?: $file;
         }
 
-        DB::table('people')->delete();
+        $storagePath = storage_path('app/import/'.ltrim($file, '/\\'));
 
-        DB::statement('ALTER TABLE people AUTO_INCREMENT = 1');
-        DB::statement('ALTER TABLE parent_children AUTO_INCREMENT = 1');
-        DB::statement('ALTER TABLE partnerships AUTO_INCREMENT = 1');
-        DB::statement('ALTER TABLE family_events AUTO_INCREMENT = 1');
-
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        return is_file($storagePath) ? $storagePath : $file;
     }
 
     private function parseGedcom(string $file): void
@@ -91,243 +106,244 @@ class ImportGedcom extends Command
         $handle = fopen($file, 'rb');
 
         if (! $handle) {
-            throw new \RuntimeException("Cannot open file: {$file}");
+            throw new RuntimeException("Невозможно открыть GEDCOM: {$file}");
         }
 
-        $currentType = null;
-        $currentId = null;
-        $currentEvent = null;
-        $currentPhoto = false;
-        $lastTextField = null;
+        $recordType = null;
+        $recordId = null;
+        $recordLines = [];
 
         while (($line = fgets($handle)) !== false) {
             $line = $this->cleanLine($line);
 
-            if ($line === '') {
-                continue;
-            }
-
-            if (preg_match('/^0 @([^@]+)@ (INDI|FAM)$/', $line, $m)) {
-                $currentId = $m[1];
-                $currentType = $m[2];
-                $currentEvent = null;
-                $currentPhoto = false;
-                $lastTextField = null;
-
-                if ($currentType === 'INDI') {
-                    $this->people[$currentId] = [
-                        'gedcom_id' => $currentId,
-                        'name' => null,
-                        'sex' => null,
-                        'birth_date' => null,
-                        'birth_place' => null,
-                        'death_date' => null,
-                        'death_place' => null,
-                        'occupation' => null,
-                        'note' => null,
-                        'photo' => null,
-                    ];
-                }
-
-                if ($currentType === 'FAM') {
-                    $this->families[$currentId] = [
-                        'gedcom_id' => $currentId,
-                        'husb' => null,
-                        'wife' => null,
-                        'children' => [],
-                        'marriage_date' => null,
-                        'marriage_place' => null,
-                        'divorce_date' => null,
-                    ];
-                }
+            if (preg_match('/^0 @([^@]+)@ (INDI|FAM)$/', $line, $matches)) {
+                $this->finishRecord($recordType, $recordId, $recordLines);
+                $recordId = $matches[1];
+                $recordType = $matches[2];
+                $recordLines = [];
 
                 continue;
             }
 
-            if (! $currentId || ! $currentType) {
+            if (str_starts_with($line, '0 ')) {
+                $this->finishRecord($recordType, $recordId, $recordLines);
+                $recordType = null;
+                $recordId = null;
+                $recordLines = [];
+
                 continue;
             }
 
-            if ($currentType === 'INDI') {
-                $this->parsePersonLine(
-                    $currentId,
-                    $line,
-                    $currentEvent,
-                    $currentPhoto,
-                    $lastTextField
-                );
-            }
-
-            if ($currentType === 'FAM') {
-                $this->parseFamilyLine(
-                    $currentId,
-                    $line,
-                    $currentEvent,
-                    $lastTextField
-                );
+            if ($recordType && $line !== '') {
+                $recordLines[] = $line;
             }
         }
 
+        $this->finishRecord($recordType, $recordId, $recordLines);
         fclose($handle);
     }
 
-    private function parsePersonLine(
-        string $id,
-        string $line,
-        ?string &$currentEvent,
-        bool &$currentPhoto,
-        ?string &$lastTextField
-    ): void {
-        if (preg_match('/^1 NAME (.+)$/', $line, $m)) {
-            $this->people[$id]['name'] = $this->cleanText($m[1]);
-            $lastTextField = 'name';
+    private function finishRecord(?string $type, ?string $id, array $lines): void
+    {
+        if (! $type || ! $id) {
+            return;
+        }
+
+        if ($type === 'INDI') {
+            $this->people[$id] = $this->parsePerson($id, $lines);
 
             return;
         }
 
-        if (preg_match('/^1 SEX (.+)$/', $line, $m)) {
-            $this->people[$id]['sex'] = $this->cleanText($m[1]);
-
-            return;
-        }
-
-        if (preg_match('/^1 OCCU (.+)$/', $line, $m)) {
-            $this->people[$id]['occupation'] = $this->cleanText($m[1]);
-            $lastTextField = 'occupation';
-
-            return;
-        }
-
-        if (preg_match('/^1 NOTE ?(.*)$/', $line, $m)) {
-            $this->people[$id]['note'] = $this->cleanText($m[1] ?? '');
-            $lastTextField = 'note';
-
-            return;
-        }
-
-        if (preg_match('/^2 CONT ?(.*)$/', $line, $m)) {
-            if ($lastTextField === 'note') {
-                $this->people[$id]['note'] .= "\n".$this->cleanText($m[1] ?? '');
-            }
-
-            return;
-        }
-
-        if (preg_match('/^2 CONC ?(.*)$/', $line, $m)) {
-            if ($lastTextField === 'note') {
-                $this->people[$id]['note'] .= $this->cleanText($m[1] ?? '');
-            }
-
-            return;
-        }
-
-        if (preg_match('/^1 BIRT/', $line)) {
-            $currentEvent = 'birth';
-            $currentPhoto = false;
-
-            return;
-        }
-
-        if (preg_match('/^1 DEAT/', $line)) {
-            $currentEvent = 'death';
-            $currentPhoto = false;
-
-            return;
-        }
-
-        if (preg_match('/^1 OBJE/', $line)) {
-            $currentPhoto = true;
-            $currentEvent = null;
-
-            return;
-        }
-
-        if ($currentPhoto && preg_match('/^2 FILE (https?:\/\/.+)$/', $line, $m)) {
-            if (! $this->people[$id]['photo']) {
-                $this->people[$id]['photo'] = $this->cleanText($m[1]);
-                $this->photosFound++;
-            }
-
-            return;
-        }
-
-        if ($currentEvent && preg_match('/^2 DATE (.+)$/', $line, $m)) {
-            $this->people[$id][$currentEvent.'_date'] = $this->parseDate($m[1]);
-
-            return;
-        }
-
-        if ($currentEvent && preg_match('/^2 PLAC (.+)$/', $line, $m)) {
-            $this->people[$id][$currentEvent.'_place'] = $this->cleanText($m[1]);
-
-            return;
-        }
-
-        if (preg_match('/^1 [A-Z_]+/', $line)) {
-            $currentEvent = null;
-            $currentPhoto = false;
-            $lastTextField = null;
-        }
+        $this->families[$id] = $this->parseFamily($id, $lines);
     }
 
-    private function parseFamilyLine(
-        string $id,
-        string $line,
-        ?string &$currentEvent,
-        ?string &$lastTextField
+    private function parsePerson(string $id, array $lines): array
+    {
+        $person = [
+            'gedcom_id' => $id,
+            'name' => null,
+            'given_name' => null,
+            'surname' => null,
+            'married_name' => null,
+            'sex' => null,
+            'events' => [],
+            'residences' => [],
+            'notes' => [],
+            'occupations' => [],
+            'photos' => [],
+            'raw' => $lines,
+        ];
+        $context = null;
+        $contextIndex = null;
+        $textTarget = null;
+
+        foreach ($lines as $line) {
+            [$level, $tag, $value] = $this->lineParts($line);
+
+            if ($level === null || $tag === null) {
+                continue;
+            }
+
+            if ($level === 1) {
+                $context = $tag;
+                $contextIndex = null;
+                $textTarget = null;
+
+                match ($tag) {
+                    'NAME' => $person['name'] = $value,
+                    'SEX' => $person['sex'] = $value,
+                    'NOTE' => $this->startText($person['notes'], $value, $contextIndex, $textTarget, 'notes'),
+                    'OCCU' => $this->startText($person['occupations'], $value, $contextIndex, $textTarget, 'occupations'),
+                    'RESI' => $this->startEvent($person['residences'], $value, $contextIndex),
+                    'OBJE' => $this->startEvent($person['photos'], $value, $contextIndex),
+                    default => $this->startTaggedEvent($person['events'], $tag, $value, $contextIndex),
+                };
+
+                continue;
+            }
+
+            if ($context === 'NAME' && $level === 2) {
+                match ($tag) {
+                    'GIVN' => $person['given_name'] = $value,
+                    'SURN' => $person['surname'] = $value,
+                    '_MARNM' => $person['married_name'] = $value,
+                    default => null,
+                };
+
+                continue;
+            }
+
+            if (in_array($tag, ['CONT', 'CONC'], true) && $textTarget) {
+                $separator = $tag === 'CONT' ? "\n" : '';
+                $person[$textTarget][$contextIndex] .= $separator.$value;
+
+                continue;
+            }
+
+            if ($context === 'RESI' && $contextIndex !== null) {
+                $this->addEventValue($person['residences'][$contextIndex], $tag, $value);
+
+                continue;
+            }
+
+            if ($context === 'OBJE' && $contextIndex !== null) {
+                $this->addEventValue($person['photos'][$contextIndex], $tag, $value);
+
+                continue;
+            }
+
+            if (isset($person['events'][$context]) && $contextIndex !== null) {
+                $this->addEventValue($person['events'][$context][$contextIndex], $tag, $value);
+            }
+        }
+
+        $this->stats['residences'] += count($person['residences']);
+        $this->stats['residence_cities'] += collect($person['residences'])->whereNotNull('CITY')->count();
+        $this->stats['birth_places'] += $this->eventValue($person, 'BIRT', 'PLAC') ? 1 : 0;
+        $this->stats['death_places'] += $this->eventValue($person, 'DEAT', 'PLAC') ? 1 : 0;
+        $this->stats['burial_places'] += $this->eventValue($person, 'BURI', 'PLAC') ? 1 : 0;
+        $this->stats['photos'] += collect($person['photos'])->whereNotNull('FILE')->count();
+
+        return $person;
+    }
+
+    private function parseFamily(string $id, array $lines): array
+    {
+        $family = [
+            'gedcom_id' => $id,
+            'husband' => null,
+            'wife' => null,
+            'children' => [],
+            'events' => [],
+            'raw' => $lines,
+        ];
+        $context = null;
+        $contextIndex = null;
+
+        foreach ($lines as $line) {
+            [$level, $tag, $value] = $this->lineParts($line);
+
+            if ($level === null || $tag === null) {
+                continue;
+            }
+
+            if ($level === 1) {
+                $context = $tag;
+                $contextIndex = null;
+
+                if ($tag === 'HUSB') {
+                    $family['husband'] = $this->pointer($value);
+                } elseif ($tag === 'WIFE') {
+                    $family['wife'] = $this->pointer($value);
+                } elseif ($tag === 'CHIL') {
+                    $family['children'][] = $this->pointer($value);
+                } else {
+                    $this->startTaggedEvent($family['events'], $tag, $value, $contextIndex);
+                }
+
+                continue;
+            }
+
+            if (isset($family['events'][$context]) && $contextIndex !== null) {
+                $this->addEventValue($family['events'][$context][$contextIndex], $tag, $value);
+            }
+        }
+
+        return $family;
+    }
+
+    private function lineParts(string $line): array
+    {
+        if (! preg_match('/^(\d+) ([^ ]+)(?: (.*))?$/', $line, $matches)) {
+            return [null, null, null];
+        }
+
+        return [(int) $matches[1], $matches[2], $this->cleanText($matches[3] ?? null)];
+    }
+
+    private function startEvent(array &$events, ?string $value, ?int &$index): void
+    {
+        $events[] = array_filter(['value' => $value], fn (mixed $item): bool => $item !== null && $item !== '');
+        $index = array_key_last($events);
+    }
+
+    private function startTaggedEvent(
+        array &$events,
+        string $tag,
+        ?string $value,
+        ?int &$index,
     ): void {
-        if (preg_match('/^1 HUSB @([^@]+)@/', $line, $m)) {
-            $this->families[$id]['husb'] = $m[1];
+        $events[$tag] ??= [];
+        $this->startEvent($events[$tag], $value, $index);
+    }
+
+    private function startText(
+        array &$items,
+        ?string $value,
+        ?int &$index,
+        ?string &$target,
+        string $targetName,
+    ): void {
+        $items[] = $value ?? '';
+        $index = array_key_last($items);
+        $target = $targetName;
+    }
+
+    private function addEventValue(array &$event, string $tag, ?string $value): void
+    {
+        if ($value === null || $value === '') {
+            return;
+        }
+
+        if (isset($event[$tag])) {
+            $event[$tag] = (array) $event[$tag];
+            $event[$tag][] = $value;
 
             return;
         }
 
-        if (preg_match('/^1 WIFE @([^@]+)@/', $line, $m)) {
-            $this->families[$id]['wife'] = $m[1];
-
-            return;
-        }
-
-        if (preg_match('/^1 CHIL @([^@]+)@/', $line, $m)) {
-            $this->families[$id]['children'][] = $m[1];
-
-            return;
-        }
-
-        if (preg_match('/^1 MARR/', $line)) {
-            $currentEvent = 'marriage';
-
-            return;
-        }
-
-        if (preg_match('/^1 DIV/', $line)) {
-            $currentEvent = 'divorce';
-
-            return;
-        }
-
-        if ($currentEvent === 'marriage' && preg_match('/^2 DATE (.+)$/', $line, $m)) {
-            $this->families[$id]['marriage_date'] = $this->parseDate($m[1]);
-
-            return;
-        }
-
-        if ($currentEvent === 'marriage' && preg_match('/^2 PLAC (.+)$/', $line, $m)) {
-            $this->families[$id]['marriage_place'] = $this->cleanText($m[1]);
-
-            return;
-        }
-
-        if ($currentEvent === 'divorce' && preg_match('/^2 DATE (.+)$/', $line, $m)) {
-            $this->families[$id]['divorce_date'] = $this->parseDate($m[1]);
-
-            return;
-        }
-
-        if (preg_match('/^1 [A-Z_]+/', $line)) {
-            $currentEvent = null;
-            $lastTextField = null;
-        }
+        $event[$tag] = $value;
     }
 
     private function importPeople(): void
@@ -335,40 +351,63 @@ class ImportGedcom extends Command
         $bar = $this->output->createProgressBar(count($this->people));
         $bar->start();
 
-        foreach ($this->people as $gedcomId => $person) {
-            [$firstName, $middleName, $lastName] = $this->splitName($person['name']);
+        foreach ($this->people as $gedcomId => $source) {
+            [$firstName, $middleName, $lastName] = $this->personName($source);
+            $residence = $this->currentResidence($source['residences']);
+            $birthDate = $this->eventDate($source, 'BIRT');
+            $person = Person::withTrashed()->firstOrNew(['gedcom_id' => $gedcomId]);
 
-            $photoPath = null;
+            $photoPath = $person->photo_path;
 
-            if ($this->option('photos') && $person['photo']) {
-                $photoPath = $this->downloadPhoto($person['photo'], $gedcomId);
+            if ($this->option('photos')) {
+                $photo = $this->primaryPhoto($source['photos']);
+
+                if ($photo) {
+                    $photoPath = $this->downloadPhoto($photo, $gedcomId) ?? $photoPath;
+                }
             }
 
-            $personId = DB::table('people')->insertGetId([
-                'first_name' => $this->cleanText($firstName ?: 'Без имени'),
-                'middle_name' => $this->cleanText($middleName),
-                'last_name' => $this->cleanText($lastName ?: 'Без фамилии'),
-                'maiden_name' => null,
-                'gender' => match ($person['sex']) {
-                    'M' => 'male',
-                    'F' => 'female',
-                    default => 'unknown',
-                },
-                'birth_date' => $person['birth_date'],
-                'death_date' => $person['death_date'],
-                'birth_place' => $this->cleanText($person['birth_place']),
-                'current_city' => null,
-                'occupation' => $this->cleanText($person['occupation']),
-                'bio' => $this->cleanText($person['note']),
-                'photo_path' => $this->cleanText($photoPath),
-                'is_published' => 1,
-                'sort_order' => 0,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $person->fill(
+                [
+                    'gedcom_id' => $gedcomId,
+                    'first_name' => $firstName ?: 'Без имени',
+                    'middle_name' => $middleName,
+                    'last_name' => $lastName ?: 'Без фамилии',
+                    'maiden_name' => $source['married_name'] ? $lastName : null,
+                    'married_name' => $source['married_name'],
+                    'gender' => match ($source['sex']) {
+                        'M' => 'male',
+                        'F' => 'female',
+                        default => 'unknown',
+                    },
+                    'birth_date' => $birthDate,
+                    'death_date' => $this->eventDate($source, 'DEAT'),
+                    'birth_place' => $this->eventValue($source, 'BIRT', 'PLAC'),
+                    'death_place' => $this->eventValue($source, 'DEAT', 'PLAC'),
+                    'burial_place' => $this->eventValue($source, 'BURI', 'PLAC'),
+                    'current_city' => $residence['CITY'] ?? $residence['PLAC'] ?? null,
+                    'current_address' => $this->residenceAddress($residence),
+                    'occupation' => collect($source['occupations'])->filter()->implode('; ') ?: null,
+                    'bio' => collect($source['notes'])->filter()->implode("\n\n") ?: null,
+                    'photo_path' => $photoPath,
+                    'gedcom_data' => [
+                        'name' => $source['name'],
+                        'events' => $source['events'],
+                        'residences' => $source['residences'],
+                        'photos' => $source['photos'],
+                        'raw' => $source['raw'],
+                    ],
+                    'imported_at' => now(),
+                    'is_published' => true,
+                ],
+            );
+            $person->save();
 
-            $this->idMap[$gedcomId] = $personId;
+            if ($person->trashed()) {
+                $person->restore();
+            }
 
+            $this->idMap[$gedcomId] = $person->id;
             $bar->advance();
         }
 
@@ -378,24 +417,44 @@ class ImportGedcom extends Command
 
     private function importFamilies(): void
     {
+        $importedIds = array_values($this->idMap);
+
+        ParentChild::query()
+            ->whereIn('parent_id', $importedIds)
+            ->whereIn('child_id', $importedIds)
+            ->delete();
+        Partnership::query()
+            ->whereIn('partner_one_id', $importedIds)
+            ->whereIn('partner_two_id', $importedIds)
+            ->delete();
+
         foreach ($this->families as $family) {
-            $husbandId = $family['husb'] ? ($this->idMap[$family['husb']] ?? null) : null;
-            $wifeId = $family['wife'] ? ($this->idMap[$family['wife']] ?? null) : null;
+            $parents = collect([$family['husband'], $family['wife']])
+                ->filter()
+                ->map(fn (string $gedcomId): ?int => $this->idMap[$gedcomId] ?? null)
+                ->filter()
+                ->values();
 
-            $parents = array_values(array_filter([$husbandId, $wifeId]));
+            if ($parents->count() === 2) {
+                $partners = $parents->sort()->values();
+                $divorceDate = $this->familyEventDate($family, 'DIV');
 
-            if (count($parents) === 2) {
-                DB::table('partnerships')->insert([
-                    'partner_one_id' => $parents[0],
-                    'partner_two_id' => $parents[1],
-                    'status' => $family['divorce_date'] ? 'divorced' : 'married',
-                    'started_at' => $family['marriage_date'],
-                    'ended_at' => $family['divorce_date'],
-                    'place' => $this->cleanText($family['marriage_place']),
-                    'notes' => null,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
+                Partnership::query()->updateOrCreate(
+                    [
+                        'partner_one_id' => $partners[0],
+                        'partner_two_id' => $partners[1],
+                    ],
+                    [
+                        'status' => $divorceDate ? 'divorced' : 'married',
+                        'started_at' => $this->familyEventDate($family, 'MARR'),
+                        'ended_at' => $divorceDate,
+                        'place' => $this->familyEventValue($family, 'MARR', 'PLAC'),
+                        'notes' => json_encode([
+                            'gedcom_id' => $family['gedcom_id'],
+                            'raw' => $family['raw'],
+                        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    ],
+                );
             }
 
             foreach ($family['children'] as $childGedcomId) {
@@ -406,89 +465,144 @@ class ImportGedcom extends Command
                 }
 
                 foreach ($parents as $parentId) {
-                    DB::table('parent_children')->insert([
-                        'parent_id' => $parentId,
-                        'child_id' => $childId,
-                        'type' => 'biological',
-                        'notes' => null,
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ]);
+                    ParentChild::query()->updateOrCreate(
+                        ['parent_id' => $parentId, 'child_id' => $childId],
+                        ['type' => 'biological'],
+                    );
                 }
             }
         }
     }
 
-    private function splitName(?string $name): array
+    private function freshDatabase(): void
     {
-        $name = $this->cleanText($name);
+        Schema::disableForeignKeyConstraints();
 
-        if (! $name) {
-            return [null, null, null];
+        try {
+            DB::table('family_events')->delete();
+            DB::table('parent_children')->delete();
+            DB::table('partnerships')->delete();
+            DB::table('telegram_users')->update(['person_id' => null]);
+            DB::table('people')->delete();
+        } finally {
+            Schema::enableForeignKeyConstraints();
+        }
+    }
+
+    private function personName(array $person): array
+    {
+        $given = $person['given_name'];
+        $surname = $person['surname'];
+
+        if (! $given || ! $surname) {
+            $name = trim((string) $person['name']);
+
+            if (preg_match('/^(.*?)\s*\/(.*?)\/$/u', $name, $matches)) {
+                $given ??= trim($matches[1]);
+                $surname ??= trim($matches[2]);
+            }
         }
 
-        $name = str_replace('/', '', $name);
-        $name = preg_replace('/\s+/', ' ', $name);
-        $name = trim($name);
+        $givenParts = preg_split('/\s+/u', trim((string) $given), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $firstName = array_shift($givenParts);
 
-        $parts = explode(' ', $name);
+        return [$firstName, $givenParts ? implode(' ', $givenParts) : null, $surname];
+    }
 
-        if (count($parts) === 1) {
-            return [$parts[0], null, null];
-        }
+    private function currentResidence(array $residences): array
+    {
+        $filled = collect($residences)->filter(
+            fn (array $residence): bool => collect($residence)
+                ->only(['CITY', 'PLAC', 'ADR1', 'ADDR', 'CTRY', 'STAE', 'POST'])
+                ->filter()
+                ->isNotEmpty(),
+        );
 
-        if (count($parts) === 2) {
-            return [$parts[0], null, $parts[1]];
-        }
+        return $filled->first(
+            fn (array $residence): bool => str_contains(
+                mb_strtolower((string) ($residence['NOTE'] ?? '')),
+                'current address:1',
+            ),
+        ) ?? $filled->last() ?? [];
+    }
 
-        $firstName = array_shift($parts);
-        $lastName = array_pop($parts);
-        $middleName = implode(' ', $parts);
+    private function residenceAddress(array $residence): ?string
+    {
+        $parts = collect(['ADR1', 'ADDR', 'CITY', 'STAE', 'POST', 'CTRY'])
+            ->map(fn (string $key): mixed => $residence[$key] ?? null)
+            ->flatten()
+            ->filter()
+            ->unique()
+            ->values();
 
-        return [$firstName, $middleName ?: null, $lastName];
+        return $parts->isEmpty() ? null : $parts->implode(', ');
+    }
+
+    private function eventDate(array $person, string $tag): ?string
+    {
+        return $this->parseDate($this->eventValue($person, $tag, 'DATE'));
+    }
+
+    private function eventValue(array $person, string $tag, string $field): ?string
+    {
+        $value = $person['events'][$tag][0][$field] ?? null;
+
+        return is_array($value) ? ($value[0] ?? null) : $value;
+    }
+
+    private function familyEventDate(array $family, string $tag): ?string
+    {
+        return $this->parseDate($this->familyEventValue($family, $tag, 'DATE'));
+    }
+
+    private function familyEventValue(array $family, string $tag, string $field): ?string
+    {
+        $value = $family['events'][$tag][0][$field] ?? null;
+
+        return is_array($value) ? ($value[0] ?? null) : $value;
     }
 
     private function parseDate(?string $date): ?string
     {
-        $date = $this->cleanText($date);
+        $date = mb_strtoupper(trim((string) $date));
 
-        if (! $date) {
+        if ($date === '') {
             return null;
         }
 
-        $date = strtoupper($date);
-
-        $date = preg_replace('/^(ABT|ABOUT|BEF|BEFORE|AFT|AFTER|CAL|EST)\s+/i', '', $date);
-        $date = trim($date);
-
+        $date = preg_replace('/^(ABT|ABOUT|BEF|BEFORE|AFT|AFTER|CAL|EST)\s+/u', '', $date);
         $months = [
-            'JAN' => '01',
-            'FEB' => '02',
-            'MAR' => '03',
-            'APR' => '04',
-            'MAY' => '05',
-            'JUN' => '06',
-            'JUL' => '07',
-            'AUG' => '08',
-            'SEP' => '09',
-            'OCT' => '10',
-            'NOV' => '11',
-            'DEC' => '12',
+            'JAN' => 1, 'FEB' => 2, 'MAR' => 3, 'APR' => 4,
+            'MAY' => 5, 'JUN' => 6, 'JUL' => 7, 'AUG' => 8,
+            'SEP' => 9, 'OCT' => 10, 'NOV' => 11, 'DEC' => 12,
         ];
 
-        if (preg_match('/^(\d{1,2}) ([A-Z]{3}) (\d{4})$/', $date, $m)) {
-            return sprintf('%04d-%02d-%02d', (int) $m[3], (int) ($months[$m[2]] ?? 1), (int) $m[1]);
+        if (preg_match('/^(\d{1,2}) ([A-Z]{3}) (\d{4})$/', $date, $matches)) {
+            return sprintf('%04d-%02d-%02d', $matches[3], $months[$matches[2]] ?? 1, $matches[1]);
         }
 
-        if (preg_match('/^([A-Z]{3}) (\d{4})$/', $date, $m)) {
-            return sprintf('%04d-%02d-01', (int) $m[2], (int) ($months[$m[1]] ?? 1));
+        if (preg_match('/^([A-Z]{3}) (\d{4})$/', $date, $matches)) {
+            return sprintf('%04d-%02d-01', $matches[2], $months[$matches[1]] ?? 1);
         }
 
-        if (preg_match('/^(\d{4})$/', $date, $m)) {
-            return "{$m[1]}-01-01";
-        }
+        return preg_match('/^\d{4}$/', $date) ? "{$date}-01-01" : null;
+    }
 
-        return null;
+    private function primaryPhoto(array $photos): ?string
+    {
+        $images = collect($photos)->filter(function (array $photo): bool {
+            $file = (string) ($photo['FILE'] ?? '');
+
+            return str_starts_with($file, 'http')
+                && ! str_ends_with(mb_strtolower(parse_url($file, PHP_URL_PATH) ?: ''), '.pdf');
+        });
+
+        $photo = $images->first(
+            fn (array $item): bool => ($item['_PRIM'] ?? null) === 'Y'
+                || ($item['_PERSONALPHOTO'] ?? null) === 'Y',
+        ) ?? $images->first();
+
+        return $photo['FILE'] ?? null;
     }
 
     private function downloadPhoto(string $url, string $gedcomId): ?string
@@ -497,67 +611,49 @@ class ImportGedcom extends Command
             $response = Http::timeout(30)->retry(2, 500)->get($url);
 
             if (! $response->successful()) {
-                $this->photosFailed++;
+                $this->stats['photos_failed']++;
 
                 return null;
             }
 
-            $extension = $this->guessImageExtension(
-                $response->header('Content-Type'),
-                $url
-            );
-
-            $fileName = Str::slug($gedcomId).'.'.$extension;
-            $path = 'people/photos/'.$fileName;
-
+            $extension = $this->imageExtension($response->header('Content-Type'), $url);
+            $path = 'people/photos/'.Str::slug($gedcomId).'.'.$extension;
             Storage::disk('public')->put($path, $response->body());
-
-            $this->photosDownloaded++;
+            $this->stats['photos_downloaded']++;
 
             return $path;
         } catch (Throwable) {
-            $this->photosFailed++;
+            $this->stats['photos_failed']++;
 
             return null;
         }
     }
 
-    private function guessImageExtension(?string $contentType, string $url): string
+    private function imageExtension(?string $contentType, string $url): string
     {
-        $contentType = strtolower((string) $contentType);
+        $contentType = mb_strtolower((string) $contentType);
 
-        if (str_contains($contentType, 'png')) {
-            return 'png';
-        }
-
-        if (str_contains($contentType, 'webp')) {
-            return 'webp';
-        }
-
-        if (str_contains($contentType, 'gif')) {
-            return 'gif';
-        }
-
-        $path = parse_url($url, PHP_URL_PATH);
-
-        if (is_string($path)) {
-            $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-
-            if (in_array($extension, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
-                return $extension === 'jpeg' ? 'jpg' : $extension;
+        foreach (['png', 'webp', 'gif'] as $extension) {
+            if (str_contains($contentType, $extension)) {
+                return $extension;
             }
         }
 
-        return 'jpg';
+        $extension = mb_strtolower(pathinfo(parse_url($url, PHP_URL_PATH) ?: '', PATHINFO_EXTENSION));
+
+        return in_array($extension, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)
+            ? ($extension === 'jpeg' ? 'jpg' : $extension)
+            : 'jpg';
+    }
+
+    private function pointer(?string $value): ?string
+    {
+        return preg_match('/^@([^@]+)@$/', (string) $value, $matches) ? $matches[1] : null;
     }
 
     private function cleanLine(string $line): string
     {
-        $line = preg_replace('/^\xEF\xBB\xBF/', '', $line);
-        $line = str_replace(["\r\n", "\r"], "\n", $line);
-        $line = trim($line, "\n");
-
-        return $this->cleanText($line) ?? '';
+        return $this->cleanText(rtrim($line, "\r\n")) ?? '';
     }
 
     private function cleanText(?string $value): ?string
@@ -569,15 +665,60 @@ class ImportGedcom extends Command
         $value = preg_replace('/^\xEF\xBB\xBF/', '', $value);
 
         if (! mb_check_encoding($value, 'UTF-8')) {
-            $value = mb_convert_encoding($value, 'UTF-8', 'Windows-1251, ISO-8859-1, UTF-8');
+            $value = mb_convert_encoding($value, 'UTF-8', 'Windows-1251, ISO-8859-1');
         }
 
         $value = iconv('UTF-8', 'UTF-8//IGNORE', $value);
 
-        if ($value === false) {
-            return null;
+        return $value === false ? null : trim($value);
+    }
+
+    private function report(): void
+    {
+        $expectedPartnerships = collect($this->families)->filter(
+            fn (array $family): bool => $family['husband'] && $family['wife'],
+        )->count();
+        $expectedParentLinks = collect($this->families)->sum(function (array $family): int {
+            $parentCount = (int) (bool) $family['husband'] + (int) (bool) $family['wife'];
+
+            return count($family['children']) * $parentCount;
+        });
+
+        $this->info('Найдено людей: '.count($this->people));
+        $this->info('Найдено семей: '.count($this->families));
+        $this->line('Ожидаемых союзов с двумя партнёрами: '.$expectedPartnerships);
+        $this->line('Ожидаемых связей родитель — ребёнок: '.$expectedParentLinks);
+        $this->line('Мест рождения: '.$this->stats['birth_places']);
+        $this->line('Мест смерти: '.$this->stats['death_places']);
+        $this->line('Мест захоронения: '.$this->stats['burial_places']);
+        $this->line('Записей проживания: '.$this->stats['residences']);
+        $this->line('Явных полей CITY: '.$this->stats['residence_cities']);
+        $this->line('Ссылок на фотографии: '.$this->stats['photos']);
+
+        if ($this->stats['residence_cities'] < $this->stats['residences']) {
+            $this->warn('В GEDCOM у большинства RESI отсутствует CITY; импортёр сохраняет доступные PLAC/ADDR, но не придумывает города.');
         }
 
-        return trim($value);
+        if (Schema::hasTable('people')) {
+            $this->newLine();
+            $this->line(
+                'Сейчас в базе: '.Person::query()->count().' людей, '
+                .Partnership::query()->count().' союзов, '
+                .ParentChild::query()->count().' родительских связей, '
+                .Person::query()->whereNotNull('current_city')->count().' заполненных городов.',
+            );
+
+            if (Schema::hasColumn('people', 'gedcom_id')) {
+                $importedIds = Person::query()
+                    ->whereNotNull('gedcom_id')
+                    ->pluck('gedcom_id')
+                    ->all();
+                $missing = array_diff(array_keys($this->people), $importedIds);
+
+                if ($importedIds !== []) {
+                    $this->line('GEDCOM ID в базе: '.count($importedIds).'; записей файла нет в базе: '.count($missing).'.');
+                }
+            }
+        }
     }
 }

@@ -14,9 +14,11 @@ class TelegramUser extends Model
         'first_name',
         'last_name',
         'language_code',
+        'photo_url',
         'status',
         'is_bot_admin',
         'last_seen_at',
+        'last_web_login_at',
     ];
 
     protected function casts(): array
@@ -24,6 +26,7 @@ class TelegramUser extends Model
         return [
             'is_bot_admin' => 'boolean',
             'last_seen_at' => 'datetime',
+            'last_web_login_at' => 'datetime',
         ];
     }
 
