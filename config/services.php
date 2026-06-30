@@ -1,0 +1,51 @@
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Third Party Services
+    |--------------------------------------------------------------------------
+    |
+    | This file is for storing the credentials for third party services such
+    | as Mailgun, Postmark, AWS and more. This file provides the de facto
+    | location for this type of information, allowing packages to have
+    | a conventional file to locate the various service credentials.
+    |
+    */
+
+    'postmark' => [
+        'key' => env('POSTMARK_API_KEY'),
+    ],
+
+    'resend' => [
+        'key' => env('RESEND_API_KEY'),
+    ],
+
+    'ses' => [
+        'key' => env('AWS_ACCESS_KEY_ID'),
+        'secret' => env('AWS_SECRET_ACCESS_KEY'),
+        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+    ],
+
+    'slack' => [
+        'notifications' => [
+            'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
+            'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
+        ],
+    ],
+
+    'telegram' => [
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'bot_username' => env('TELEGRAM_BOT_USERNAME', 'atapin_bot'),
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        'mini_app_url' => env('TELEGRAM_MINI_APP_URL', env('APP_URL').'/family'),
+        'auto_approve' => env('TELEGRAM_AUTO_APPROVE', false),
+        'admin_ids' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('TELEGRAM_ADMIN_IDS', '')),
+        ))),
+        'dev_user_id' => env('TELEGRAM_DEV_USER_ID'),
+    ],
+
+];
