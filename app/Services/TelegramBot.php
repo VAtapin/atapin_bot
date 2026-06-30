@@ -8,7 +8,7 @@ use RuntimeException;
 
 class TelegramBot
 {
-    public function request(string $method, array $data = []): array
+    public function request(string $method, array $data = []): mixed
     {
         $token = (string) config('services.telegram.bot_token');
 
