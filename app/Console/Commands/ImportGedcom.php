@@ -17,6 +17,23 @@ class ImportGedcom extends Command
     private array $families = [];
     private array $idMap = [];
 
+
+    private function cleanText(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        // убрать BOM
+        $value = preg_replace('/^\xEF\xBB\xBF/', '', $value);
+
+        // убрать невалидные UTF-8 байты
+        $value = iconv('UTF-8', 'UTF-8//IGNORE', $value);
+
+        return trim($value);
+    }
+
+    
     public function handle(): int
     {
         $file = $this->argument('file');
@@ -353,18 +370,5 @@ class ImportGedcom extends Command
             return null;
         }
     }
-    private function cleanText(?string $value): ?string
-    {
-        if ($value === null) {
-            return null;
-        }
 
-        // убрать BOM
-        $value = preg_replace('/^\xEF\xBB\xBF/', '', $value);
-
-        // убрать невалидные UTF-8 байты
-        $value = iconv('UTF-8', 'UTF-8//IGNORE', $value);
-
-        return trim($value);
-    }
 }
