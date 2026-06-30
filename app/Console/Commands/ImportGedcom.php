@@ -196,6 +196,17 @@ class ImportGedcom extends Command
                 $photoPath = $this->downloadPhoto($person['photo'], $gedcomId);
             }
 
+            'first_name' => $this->cleanText($firstName ?: 'Без имени'),
+            'middle_name' => $this->cleanText($middleName),
+            'last_name' => $this->cleanText($lastName ?: 'Без фамилии'),
+            'maiden_name' => null,
+            'gender' => ...,
+            'birth_place' => $this->cleanText($person['birth_place']),
+            'current_city' => null,
+            'occupation' => $this->cleanText($person['occupation']),
+            'bio' => $this->cleanText($person['note']),
+            'photo_path' => $this->cleanText($photoPath),
+
             $id = DB::table('people')->insertGetId([
                 'first_name' => $firstName ?: 'Без имени',
                 'middle_name' => $middleName,
@@ -232,13 +243,16 @@ class ImportGedcom extends Command
             ]);
 
             if (count($parents) === 2) {
+
+ 
+
                 DB::table('partnerships')->insert([
                     'partner_one_id' => array_values($parents)[0],
                     'partner_two_id' => array_values($parents)[1],
                     'status' => $family['divorce_date'] ? 'divorced' : 'married',
                     'started_at' => $family['marriage_date'],
                     'ended_at' => $family['divorce_date'],
-                    'place' => $family['marriage_place'],
+                    'place' => $this->cleanText($family['marriage_place']),
                     'notes' => null,
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -338,5 +352,19 @@ class ImportGedcom extends Command
         } catch (\Throwable) {
             return null;
         }
+    }
+    private function cleanText(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        // убрать BOM
+        $value = preg_replace('/^\xEF\xBB\xBF/', '', $value);
+
+        // убрать невалидные UTF-8 байты
+        $value = iconv('UTF-8', 'UTF-8//IGNORE', $value);
+
+        return trim($value);
     }
 }
