@@ -34,6 +34,21 @@ class FamilyAuthAndSelfServiceTest extends TestCase
             ->assertJsonPath('person.name', $person->full_name);
     }
 
+    public function test_living_person_does_not_have_life_years_label(): void
+    {
+        $living = Person::factory()->create([
+            'birth_date' => '2004-03-12',
+            'death_date' => null,
+        ]);
+        $deceased = Person::factory()->create([
+            'birth_date' => '1929-12-25',
+            'death_date' => '1997-12-29',
+        ]);
+
+        $this->assertNull($living->life_years);
+        $this->assertSame('1929 — 1997', $deceased->life_years);
+    }
+
     public function test_person_can_edit_profile_add_child_album_and_photo(): void
     {
         Storage::fake('public');

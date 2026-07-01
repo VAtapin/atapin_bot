@@ -71,13 +71,13 @@ class Person extends Model
 
     public function getLifeYearsAttribute(): ?string
     {
-        if (! $this->birth_date && ! $this->death_date) {
+        if (! $this->death_date) {
             return null;
         }
 
         return ($this->birth_date?->format('Y') ?? '?')
             .' — '
-            .($this->death_date?->format('Y') ?? 'н.в.');
+            .$this->death_date->format('Y');
     }
 
     public function getAgeAttribute(): ?int

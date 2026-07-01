@@ -120,7 +120,8 @@ class MiniAppTest extends TestCase
 
         $this->get('/family/person/'.$child->id)
             ->assertOk()
-            ->assertSee('"focusId":'.$child->id, false);
+            ->assertSee('"focusId":'.$child->id, false)
+            ->assertSee('"openPersonId":'.$child->id, false);
     }
 
     public function test_open_mini_app_can_consume_queued_navigation(): void

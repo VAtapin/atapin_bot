@@ -130,6 +130,11 @@
                 </label>
                 <button type="submit">Войти</button>
             </form>
+            <a id="telegram-credentials-link"
+               class="telegram-credentials"
+               href="{{ $familyAppConfig['telegramCredentialsUrl'] }}">
+                Получить логин и пароль в Telegram
+            </a>
             <p id="auth-error" class="auth-error">{{ $loginError }}</p>
         </section>
     </aside>
@@ -138,6 +143,14 @@
         <article class="sheet-card">
             <button id="close-person" class="icon-button sheet-close" type="button" aria-label="Закрыть">×</button>
             <div id="person-content"></div>
+        </article>
+    </aside>
+
+    <aside id="photo-viewer" class="photo-viewer" hidden>
+        <article class="photo-viewer-card">
+            <button id="close-photo-viewer" class="icon-button photo-viewer-close" type="button" aria-label="Закрыть">×</button>
+            <img id="photo-viewer-image" src="" alt="">
+            <div id="photo-viewer-caption"></div>
         </article>
     </aside>
 </body>

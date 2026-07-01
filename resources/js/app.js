@@ -6,18 +6,26 @@ cytoscape.use(dagre);
 
 const telegram = window.Telegram?.WebApp;
 const initialParams = new URLSearchParams(window.location.search);
-const requestedTab = initialParams.get('tab');
+const startAction = parseMiniAppStartParameter(
+    telegram?.initDataUnsafe?.start_param
+    ?? initialParams.get('tgWebAppStartParam'),
+);
+const requestedTab = startAction?.tab ?? initialParams.get('tab');
 const state = {
     cytoscape: null,
     people: new Map(),
     activeTab: ['tree', 'list', 'gallery', 'birthdays', 'me'].includes(requestedTab)
         ? requestedTab
         : 'tree',
-    scope: 'branch',
+    scope: startAction?.scope ?? 'branch',
     lastTreeData: null,
     galleryPhotos: new Map(),
-    focusId: window.familyAppConfig?.focusId
+    focusId: startAction?.focus
+        ?? window.familyAppConfig?.focusId
         ?? initialParams.get('focus'),
+    pendingOpenPersonId: startAction?.openPerson
+        ?? window.familyAppConfig?.openPersonId
+        ?? null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -27,6 +35,33 @@ const escapeHtml = (value = '') => String(value)
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+
+function parseMiniAppStartParameter(value) {
+    if (!value) return null;
+
+    let match = String(value).match(/^person_(\d+)$/);
+    if (match) {
+        return {
+            tab: 'tree',
+            focus: match[1],
+            openPerson: match[1],
+            scope: 'branch',
+        };
+    }
+
+    match = String(value).match(/^list_(grandchildren|nephews)_(\d+)$/);
+    if (match) {
+        return {
+            tab: 'list',
+            relation: match[1],
+            focus: match[2],
+            scope: 'branch',
+        };
+    }
+
+    match = String(value).match(/^tab_(tree|list|gallery|birthdays|me)$/);
+    return match ? { tab: match[1] } : null;
+}
 
 try {
     telegram?.ready();
@@ -98,7 +133,7 @@ function personElements(data) {
     const nodes = data.people.map((person) => ({
         data: {
             id: String(person.id),
-            label: person.life_years ? `${person.name}\n${person.life_years}` : person.name,
+            label: `${person.name}${treeDateLabel(person) ? `\n${treeDateLabel(person)}` : ''}`,
             years: person.life_years || '',
             photo: person.photo_url || '',
             gender: person.gender,
@@ -166,6 +201,22 @@ function personElements(data) {
     return [...nodes, ...unionNodes, ...parentEdges, ...partnershipEdges];
 }
 
+function compactDate(value) {
+    if (!value) return '';
+    const [year, month, day] = value.split('-');
+    return [day, month, year].filter(Boolean).join('.');
+}
+
+function treeDateLabel(person) {
+    const birth = compactDate(person.birth_date);
+    const death = compactDate(person.death_date);
+
+    if (birth && death) return `${birth} — ${death}`;
+    if (death) return `† ${death}`;
+    if (birth) return `р. ${birth}`;
+    return '';
+}
+
 function renderTree(data) {
     state.cytoscape?.destroy();
     $('#empty').hidden = data.people.length > 0;
@@ -180,8 +231,8 @@ function renderTree(data) {
             {
                 selector: 'node.person',
                 style: {
-                    width: 190,
-                    height: 88,
+                    width: 220,
+                    height: 96,
                     shape: 'round-rectangle',
                     'background-color': '#fffdf8',
                     'border-color': '#d7cbb9',
@@ -192,7 +243,7 @@ function renderTree(data) {
                     'font-size': 14,
                     'font-weight': 700,
                     'text-wrap': 'wrap',
-                    'text-max-width': 145,
+                    'text-max-width': 178,
                     'text-valign': 'center',
                     'text-halign': 'center',
                     'text-margin-x': 0,
@@ -210,12 +261,12 @@ function renderTree(data) {
                     'background-fit': 'none',
                     'background-width': 68,
                     'background-height': 68,
-                    'background-position-x': '7%',
+                    'background-position-x': '9%',
                     'background-position-y': '50%',
                     'background-clip': 'node',
-                    'text-halign': 'right',
-                    'text-margin-x': -10,
-                    'text-max-width': 105,
+                    'text-halign': 'center',
+                    'text-margin-x': 39,
+                    'text-max-width': 126,
                 },
             },
             {
@@ -358,7 +409,9 @@ function showPerson(id) {
     if (!person) return;
 
     const photo = person.photo_url
-        ? `<img class="person-photo" src="${escapeHtml(person.photo_url)}" alt="">`
+        ? `<button class="person-photo-button" type="button" data-view-main-photo>
+            <img class="person-photo" src="${escapeHtml(person.photo_url)}" alt="">
+        </button>`
         : `<div class="person-photo person-photo--empty">${escapeHtml(person.name.slice(0, 1))}</div>`;
     const facts = [
         person.birth_date && ['Дата рождения', formatDate(person.birth_date)],
@@ -403,10 +456,14 @@ function showPerson(id) {
                 </div>
             </section>
         `).join('')}
-        ${photos.length > 1 ? `
+        ${photos.length ? `
             <section class="person-photo-strip">
                 <h3>Фотографии</h3>
-                <div>${photos.map((item) => `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.title || person.name)}">`).join('')}</div>
+                <div>${photos.map((item, index) => `
+                    <button type="button" data-person-photo-index="${index}">
+                        <img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.title || person.name)}">
+                    </button>
+                `).join('')}</div>
             </section>
         ` : ''}
         ${person.bio ? `<p class="person-bio">${escapeHtml(person.bio)}</p>` : ''}
@@ -423,6 +480,24 @@ function showPerson(id) {
             }
 
             showPerson(relativeId);
+        });
+    });
+    $('#person-content').querySelector('[data-view-main-photo]')?.addEventListener('click', () => {
+        showPhotoViewer({
+            url: person.photo_url,
+            title: person.name,
+            person_id: person.id,
+            person_name: person.name,
+        });
+    });
+    $('#person-content').querySelectorAll('[data-person-photo-index]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const item = photos[Number(button.dataset.personPhotoIndex)];
+            showPhotoViewer({
+                ...item,
+                person_id: person.id,
+                person_name: person.name,
+            });
         });
     });
     $('#person-focus').addEventListener('click', () => {
@@ -462,6 +537,12 @@ async function loadTree() {
         renderList(data);
         fillCities(data.filters.cities);
         $('#tree-meta').textContent = `Показано ${data.shown_people} из ${data.total_people}`;
+
+        if (state.pendingOpenPersonId && state.people.has(String(state.pendingOpenPersonId))) {
+            const personId = state.pendingOpenPersonId;
+            state.pendingOpenPersonId = null;
+            showPerson(personId);
+        }
     } catch (error) {
         showError(error.message, error.payload);
     } finally {
@@ -526,18 +607,9 @@ async function loadGallery() {
             `).join('')
             : '<p class="empty-list">Фотографий пока нет.</p>';
         $('#gallery-grid').querySelectorAll('[data-photo-id]').forEach((item) => {
-            item.addEventListener('click', async () => {
+            item.addEventListener('click', () => {
                 const photo = state.galleryPhotos.get(String(item.dataset.photoId));
-
-                if (!photo?.is_associated) {
-                    showStandalonePhoto(photo);
-                    return;
-                }
-
-                state.focusId = photo.person_id;
-                state.scope = 'branch';
-                await loadTree();
-                showPerson(photo.person_id);
+                showPhotoViewer(photo);
             });
         });
     } catch (error) {
@@ -547,18 +619,33 @@ async function loadGallery() {
     }
 }
 
-function showStandalonePhoto(photo) {
+function showPhotoViewer(photo) {
     if (!photo) return;
 
-    $('#person-content').innerHTML = `
-        <div class="standalone-photo">
-            <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.person_name)}">
-            <h2>${escapeHtml(photo.person_name)}</h2>
-            ${photo.description ? `<p>${escapeHtml(photo.description)}</p>` : ''}
-            <small>Фотография пока не привязана к человеку в семейном древе.</small>
-        </div>
+    $('#photo-viewer-image').src = photo.url;
+    $('#photo-viewer-image').alt = photo.title || photo.person_name || 'Семейная фотография';
+    $('#photo-viewer-caption').innerHTML = `
+        ${(photo.title || photo.person_name)
+            ? `<strong>${escapeHtml(photo.title || photo.person_name)}</strong>`
+            : ''}
+        ${photo.description ? `<p>${escapeHtml(photo.description)}</p>` : ''}
+        ${photo.taken_at ? `<small>${escapeHtml(formatDate(photo.taken_at))}</small>` : ''}
+        ${photo.person_id ? `
+            <button type="button" data-viewer-person="${photo.person_id}">
+                Открыть карточку ${escapeHtml(photo.person_name || 'человека')}
+            </button>
+        ` : ''}
     `;
-    $('#person-sheet').hidden = false;
+    $('#photo-viewer-caption [data-viewer-person]')?.addEventListener('click', async (event) => {
+        const personId = event.currentTarget.dataset.viewerPerson;
+        $('#photo-viewer').hidden = true;
+        state.focusId = personId;
+        state.scope = 'branch';
+        state.pendingOpenPersonId = personId;
+        state.lastTreeData = null;
+        switchTab('tree');
+    });
+    $('#photo-viewer').hidden = false;
 }
 
 function field(name, label, value = '', type = 'text') {
@@ -869,6 +956,9 @@ async function syncMiniAppNavigation() {
         $('#filters [name="relation"]').value = action.relation ?? '';
         state.scope = action.scope ?? 'branch';
         state.focusId = action.focus ? String(action.focus) : null;
+        state.pendingOpenPersonId = action.open_person
+            ? String(action.open_person)
+            : null;
         state.lastTreeData = null;
         switchTab(action.tab);
     } catch {
@@ -912,6 +1002,10 @@ $('#close-person').addEventListener('click', () => { $('#person-sheet').hidden =
 $('#person-sheet').addEventListener('click', (event) => {
     if (event.target.id === 'person-sheet') event.currentTarget.hidden = true;
 });
+$('#close-photo-viewer').addEventListener('click', () => { $('#photo-viewer').hidden = true; });
+$('#photo-viewer').addEventListener('click', (event) => {
+    if (event.target.id === 'photo-viewer') event.currentTarget.hidden = true;
+});
 document.querySelectorAll('[data-tab]').forEach((button) => {
     button.addEventListener('click', () => switchTab(button.dataset.tab));
 });
@@ -925,8 +1019,8 @@ if (window.familyAppConfig?.loginError) {
     $('#auth-panel').hidden = false;
 }
 
-if (initialParams.get('relation')) {
-    $('#filters [name="relation"]').value = initialParams.get('relation');
+if (startAction?.relation || initialParams.get('relation')) {
+    $('#filters [name="relation"]').value = startAction?.relation ?? initialParams.get('relation');
 }
 
 switchTab(state.activeTab);

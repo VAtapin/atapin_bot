@@ -233,6 +233,14 @@ button { cursor: pointer; }
 .auth-card h2 { margin: 0; font: 700 25px/1.2 Georgia, serif; }
 .auth-card > p { color: var(--muted); line-height: 1.45; }
 .auth-card .telegram-login { width: 100%; }
+.telegram-credentials {
+    display: block;
+    margin-top: 12px;
+    color: var(--accent);
+    font-weight: 700;
+    text-align: center;
+    text-decoration: none;
+}
 .auth-divider { display: flex; align-items: center; gap: 10px; margin: 18px 0; color: var(--muted); }
 .auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 .auth-form { display: grid; gap: 12px; text-align: left; }
@@ -278,6 +286,14 @@ button { cursor: pointer; }
 .person-heading { display: flex; align-items: center; gap: 14px; padding-right: 36px; }
 .person-heading h2 { margin: 0; font: 700 24px/1.15 Georgia, serif; }
 .person-heading p { margin: 5px 0 0; color: var(--muted); }
+.person-photo-button {
+    flex: 0 0 auto;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    cursor: zoom-in;
+}
 .person-photo { width: 74px; height: 74px; object-fit: cover; border-radius: 50%; border: 2px solid var(--line); }
 .person-photo--empty { display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); font: 700 30px Georgia, serif; }
 .person-facts { margin: 20px 0; }
@@ -299,6 +315,14 @@ button { cursor: pointer; }
 }
 .relative-chips img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
 .person-photo-strip > div { display: flex; gap: 7px; overflow-x: auto; }
+.person-photo-strip button {
+    flex: 0 0 auto;
+    padding: 0;
+    border: 0;
+    border-radius: 11px;
+    background: transparent;
+    cursor: zoom-in;
+}
 .person-photo-strip img { width: 92px; height: 92px; flex: 0 0 auto; border-radius: 11px; object-fit: cover; }
 .person-focus {
     width: 100%;
@@ -310,6 +334,57 @@ button { cursor: pointer; }
 .standalone-photo h2 { margin: 14px 0 4px; font: 700 22px/1.2 Georgia, serif; }
 .standalone-photo p { white-space: pre-line; }
 .standalone-photo small { color: var(--muted); }
+
+.photo-viewer {
+    position: fixed;
+    z-index: 60;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgb(15 13 10 / 88%);
+}
+.photo-viewer-card {
+    position: relative;
+    display: flex;
+    width: min(100%, 1100px);
+    max-height: calc(100dvh - 36px);
+    flex-direction: column;
+    align-items: center;
+}
+.photo-viewer-card > img {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100dvh - 145px);
+    border-radius: 14px;
+    object-fit: contain;
+    box-shadow: 0 16px 55px rgb(0 0 0 / 38%);
+}
+.photo-viewer-close {
+    position: absolute;
+    z-index: 2;
+    top: 8px;
+    right: 8px;
+    background: rgb(255 255 255 / 88%);
+    color: #17140f;
+}
+#photo-viewer-caption {
+    margin-top: 10px;
+    color: #fff;
+    text-align: center;
+}
+#photo-viewer-caption strong,
+#photo-viewer-caption small { display: block; }
+#photo-viewer-caption p { margin: 5px 0; white-space: pre-line; }
+#photo-viewer-caption button {
+    margin-top: 9px;
+    border: 0;
+    border-radius: 10px;
+    padding: 9px 14px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-weight: 700;
+}
 
 .birthdays {
     height: 100%;

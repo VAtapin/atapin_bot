@@ -11,9 +11,11 @@ use App\Models\TelegramGroup;
 use App\Models\TelegramUpdate;
 use App\Models\TelegramUser;
 use App\Services\TelegramBot;
+use App\Services\TelegramWebLogin;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Throwable;
 
 class TelegramWebhookController extends Controller
@@ -111,6 +113,18 @@ class TelegramWebhookController extends Controller
         $command = mb_strtolower($rawCommand);
         $command = preg_replace('/@[^ ]+$/', '', $command);
 
+        if ($command === '/start' && $arguments === 'credentials') {
+            $this->sendWebCredentials($chat['id'], $user);
+
+            return;
+        }
+
+        if ($command === '/start' && $arguments === 'site') {
+            $this->sendWebsiteLogin($chat['id'], $user);
+
+            return;
+        }
+
         if ($command === '/start') {
             $this->sendWelcome($chat['id'], $user);
 
@@ -165,6 +179,8 @@ class TelegramWebhookController extends Controller
             '/nephews' => $this->sendRelativeList($chat['id'], $user, 'nephews', 'Мои племянники'),
             '/events' => $this->sendEvents($chat['id']),
             '/stats' => $this->sendStats($chat['id']),
+            '/credentials' => $this->sendWebCredentials($chat['id'], $user),
+            '/site' => $this->sendWebsiteLogin($chat['id'], $user),
             '/help' => $this->sendHelp($chat['id']),
             default => null,
         };
@@ -345,8 +361,149 @@ class TelegramWebhookController extends Controller
             ."/birthdays — ближайшие дни рождения\n"
             ."/events — семейные события\n"
             ."/stats — статистика архива\n"
+            ."/credentials — получить логин и новый пароль для сайта\n"
+            ."/site — войти на сайт без пароля\n"
             .'/help — эта подсказка',
         );
+    }
+
+    private function sendWebCredentials(int $chatId, TelegramUser $user): void
+    {
+        if (! $user->isApproved()) {
+            $this->bot->sendMessage(
+                $chatId,
+                'Сначала администратор семьи должен разрешить вам доступ.',
+            );
+
+            return;
+        }
+
+        if ($chatId !== (int) $user->telegram_user_id) {
+            $this->sendPrivateBotButton(
+                $chatId,
+                'Логин и пароль нельзя публиковать в группе. Откройте личный чат с ботом:',
+                '🔐 Получить логин и пароль',
+                'credentials',
+            );
+
+            return;
+        }
+
+        $person = $user->person;
+
+        if (! $person) {
+            $this->bot->sendMessage(
+                $chatId,
+                'Ваш Telegram ещё не привязан к человеку в древе. Попросите администратора выполнить привязку.',
+            );
+
+            return;
+        }
+
+        $login = $person->login ?: $this->uniqueWebLogin($person, $user);
+        $password = Str::password(12, true, true, false, false);
+
+        $person->update([
+            'login' => $login,
+            'password' => $password,
+            'web_login_enabled' => true,
+        ]);
+        $websiteUrl = app(TelegramWebLogin::class)->createUrl($user);
+
+        $this->bot->sendMessage(
+            $user->telegram_user_id,
+            "🔐 <b>Доступ к семейному сайту</b>\n\n"
+            .'Логин: <code>'.e($login)."</code>\n"
+            .'Новый пароль: <code>'.e($password)."</code>\n\n"
+            .'Старый пароль больше не действует. Никому не пересылайте это сообщение.',
+            [
+                'protect_content' => true,
+                'reply_markup' => [
+                    'inline_keyboard' => [[
+                        [
+                            'text' => '🌐 Перейти на сайт',
+                            'url' => $websiteUrl,
+                        ],
+                    ]],
+                ],
+            ],
+        );
+    }
+
+    private function sendWebsiteLogin(int $chatId, TelegramUser $user): void
+    {
+        if (! $user->isApproved()) {
+            $this->bot->sendMessage(
+                $chatId,
+                'Сначала администратор семьи должен разрешить вам доступ.',
+            );
+
+            return;
+        }
+
+        if ($chatId !== (int) $user->telegram_user_id) {
+            $this->sendPrivateBotButton(
+                $chatId,
+                'Для безопасного входа откройте личный чат с ботом:',
+                '🌐 Перейти на сайт',
+                'site',
+            );
+
+            return;
+        }
+
+        $url = app(TelegramWebLogin::class)->createUrl($user);
+
+        $this->bot->sendMessage(
+            $user->telegram_user_id,
+            "🌐 <b>Вход на семейный сайт</b>\n\n"
+            .'Кнопка автоматически авторизует вас. Ссылка действует 15 минут и только один раз.',
+            [
+                'protect_content' => true,
+                'reply_markup' => [
+                    'inline_keyboard' => [[
+                        ['text' => '🌿 Открыть семейный сайт', 'url' => $url],
+                    ]],
+                ],
+            ],
+        );
+    }
+
+    private function uniqueWebLogin(Person $person, TelegramUser $user): string
+    {
+        $base = Str::slug($person->first_name.' '.$person->last_name, '');
+        $base = $base !== ''
+            ? mb_substr($base, 0, 40)
+            : 'family'.$user->telegram_user_id;
+        $candidate = $base;
+        $suffix = 0;
+
+        while (Person::query()->where('login', $candidate)->whereKeyNot($person->id)->exists()) {
+            $suffix++;
+            $candidate = $base.$suffix;
+        }
+
+        return $candidate;
+    }
+
+    private function sendPrivateBotButton(
+        int $chatId,
+        string $message,
+        string $buttonText,
+        string $startParameter,
+    ): void {
+        $username = ltrim((string) config('services.telegram.bot_username'), '@');
+
+        $this->bot->sendMessage($chatId, $message, [
+            'reply_markup' => [
+                'inline_keyboard' => [[
+                    [
+                        'text' => $buttonText,
+                        'url' => "https://t.me/{$username}?start={$startParameter}",
+                    ],
+                ]],
+            ],
+        ]);
     }
 
     private function askForPersonName(int $chatId, TelegramUser $user, string $mode): void
@@ -617,10 +774,41 @@ class TelegramWebhookController extends Controller
         if ($chatId > 0) {
             $button['web_app'] = ['url' => $url];
         } else {
-            $button['url'] = $url;
+            $username = ltrim((string) config('services.telegram.bot_username'), '@');
+            $startParameter = $this->miniAppStartParameter($url);
+            $button['url'] = "https://t.me/{$username}?startapp=".rawurlencode($startParameter);
         }
 
         return $button;
+    }
+
+    private function miniAppStartParameter(string $url): string
+    {
+        $path = (string) parse_url($url, PHP_URL_PATH);
+        $query = [];
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+        $focusId = null;
+
+        if (preg_match('~/family/person/(\d+)~', $path, $matches)) {
+            $focusId = (int) $matches[1];
+        }
+
+        $tab = in_array($query['tab'] ?? null, ['tree', 'list', 'gallery', 'birthdays', 'me'], true)
+            ? $query['tab']
+            : 'tree';
+        $relation = in_array($query['relation'] ?? null, ['grandchildren', 'nephews'], true)
+            ? $query['relation']
+            : null;
+
+        if ($focusId && $tab === 'list' && $relation) {
+            return "list_{$relation}_{$focusId}";
+        }
+
+        if ($focusId) {
+            return "person_{$focusId}";
+        }
+
+        return "tab_{$tab}";
     }
 
     private function familyUrl(int $focusId): string

@@ -30,7 +30,11 @@ class MiniAppController extends Controller
                 'telegramLoginUrl' => config('services.telegram.oidc_client_id')
                     ? route('telegram.login')
                     : null,
+                'telegramCredentialsUrl' => 'https://t.me/'
+                    .ltrim((string) config('services.telegram.bot_username'), '@')
+                    .'?start=credentials',
                 'focusId' => $person?->id,
+                'openPersonId' => $person?->id,
             ],
         ]);
     }

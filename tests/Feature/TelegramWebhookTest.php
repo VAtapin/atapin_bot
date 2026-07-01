@@ -7,6 +7,7 @@ use App\Models\TelegramGroup;
 use App\Models\TelegramUpdate;
 use App\Models\TelegramUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -125,6 +126,77 @@ class TelegramWebhookTest extends TestCase
         );
     }
 
+    public function test_approved_linked_user_can_receive_new_site_credentials(): void
+    {
+        $person = Person::factory()->create();
+        TelegramUser::query()->create([
+            'telegram_user_id' => 321,
+            'first_name' => 'Иван',
+            'status' => 'approved',
+            'person_id' => $person->id,
+        ]);
+
+        $this->sendPrivateMessage(2201, '/credentials');
+
+        $person->refresh();
+        $this->assertTrue($person->web_login_enabled);
+        $this->assertNotNull($person->login);
+
+        $request = Http::recorded()->last()[0];
+        preg_match('/Новый пароль: <code>([^<]+)<\/code>/', $request->data()['text'], $matches);
+        $this->assertNotEmpty($matches[1] ?? null);
+        $this->assertTrue(Hash::check($matches[1], $person->password));
+        $this->assertTrue($request->data()['protect_content']);
+    }
+
+    public function test_site_command_sends_one_time_login_link(): void
+    {
+        $user = TelegramUser::query()->create([
+            'telegram_user_id' => 321,
+            'first_name' => 'Иван',
+            'status' => 'approved',
+        ]);
+
+        $this->sendPrivateMessage(2202, '/site');
+
+        $request = Http::recorded()->last()[0];
+        $url = $request->data()['reply_markup']['inline_keyboard'][0][0]['url'];
+
+        $this->get($url)
+            ->assertRedirect('/family')
+            ->assertSessionHas('family_telegram_user_id', $user->id);
+
+        $this->get($url)->assertForbidden();
+    }
+
+    public function test_group_person_result_uses_authenticated_mini_app_deep_link(): void
+    {
+        TelegramUser::query()->create([
+            'telegram_user_id' => 321,
+            'first_name' => 'Иван',
+            'status' => 'approved',
+        ]);
+        TelegramGroup::query()->create([
+            'telegram_chat_id' => -100123,
+            'title' => 'Большая семья',
+            'is_active' => true,
+        ]);
+        $person = Person::factory()->create([
+            'first_name' => 'Анатолий',
+            'last_name' => 'Атапин',
+        ]);
+
+        $this->sendGroupMessage(2301, '/person');
+        $this->sendGroupMessage(2302, 'Анатолий');
+
+        $request = Http::recorded()->last()[0];
+        $url = $request->data()['reply_markup']['inline_keyboard'][0][0]['url'];
+        $this->assertSame(
+            'https://t.me/atapin_bot?startapp=person_'.$person->id,
+            $url,
+        );
+    }
+
     public function test_admin_can_approve_user_from_inline_button(): void
     {
         config()->set('services.telegram.admin_ids', ['999']);
@@ -165,6 +237,29 @@ class TelegramWebhookTest extends TestCase
                         'language_code' => 'ru',
                     ],
                     'chat' => ['id' => 321, 'type' => 'private'],
+                ],
+            ])
+            ->assertOk();
+    }
+
+    private function sendGroupMessage(int $updateId, string $text): void
+    {
+        $this->withHeader('X-Telegram-Bot-Api-Secret-Token', 'test-secret')
+            ->postJson('/api/telegram/webhook', [
+                'update_id' => $updateId,
+                'message' => [
+                    'message_id' => $updateId,
+                    'text' => $text,
+                    'from' => [
+                        'id' => 321,
+                        'first_name' => 'Иван',
+                        'language_code' => 'ru',
+                    ],
+                    'chat' => [
+                        'id' => -100123,
+                        'type' => 'supergroup',
+                        'title' => 'Большая семья',
+                    ],
                 ],
             ])
             ->assertOk();
