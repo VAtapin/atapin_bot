@@ -12,6 +12,7 @@ Route::middleware(['web', 'telegram.webapp'])->group(function (): void {
     Route::get('/family/tree', [MiniAppController::class, 'tree']);
     Route::get('/family/birthdays', [MiniAppController::class, 'birthdays']);
     Route::get('/family/gallery', [MiniAppController::class, 'gallery']);
+    Route::post('/family/navigation', [MiniAppController::class, 'navigation']);
     Route::get('/family/me', [FamilySelfServiceController::class, 'show']);
     Route::put('/family/me', [FamilySelfServiceController::class, 'update']);
     Route::delete('/family/me', [FamilySelfServiceController::class, 'destroy']);

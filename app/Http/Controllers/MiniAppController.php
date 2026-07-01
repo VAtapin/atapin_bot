@@ -194,6 +194,23 @@ class MiniAppController extends Controller
         return response()->json(['photos' => $photos]);
     }
 
+    public function navigation(Request $request): JsonResponse
+    {
+        $telegramUser = $request->attributes->get('telegramUser');
+
+        if (! $telegramUser) {
+            return response()->json(['action' => null]);
+        }
+
+        $action = $telegramUser->mini_app_action;
+
+        if ($action) {
+            $telegramUser->updateQuietly(['mini_app_action' => null]);
+        }
+
+        return response()->json(['action' => $action]);
+    }
+
     private function familyBranchIds(int $focusId, int $depth): array
     {
         $parentLinks = ParentChild::query()->get(['parent_id', 'child_id']);

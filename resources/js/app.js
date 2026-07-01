@@ -825,6 +825,36 @@ function switchTab(tab) {
     }
 }
 
+let navigationRequestPending = false;
+
+async function syncMiniAppNavigation() {
+    if (navigationRequestPending) return;
+
+    navigationRequestPending = true;
+
+    try {
+        const { action } = await api('/api/family/navigation', { method: 'POST' });
+
+        if (!action?.tab) return;
+
+        if (Object.hasOwn(action, 'q')) {
+            $('#filters [name="q"]').value = action.q ?? '';
+        } else if (['tree', 'list'].includes(action.tab)) {
+            $('#filters [name="q"]').value = '';
+        }
+
+        $('#filters [name="relation"]').value = action.relation ?? '';
+        state.scope = action.scope ?? 'branch';
+        state.focusId = action.focus ? String(action.focus) : null;
+        state.lastTreeData = null;
+        switchTab(action.tab);
+    } catch {
+        // Авторизация и ошибки API уже показываются основными загрузчиками.
+    } finally {
+        navigationRequestPending = false;
+    }
+}
+
 let debounce;
 $('#filters').addEventListener('input', () => {
     clearTimeout(debounce);
@@ -877,3 +907,13 @@ if (initialParams.get('relation')) {
 }
 
 switchTab(state.activeTab);
+
+if (telegram?.initData) {
+    telegram.onEvent?.('activated', syncMiniAppNavigation);
+    window.addEventListener('focus', syncMiniAppNavigation);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) syncMiniAppNavigation();
+    });
+    window.setInterval(syncMiniAppNavigation, 2500);
+    syncMiniAppNavigation();
+}

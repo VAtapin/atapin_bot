@@ -92,6 +92,11 @@ class TelegramWebhookTest extends TestCase
 
         $this->sendPrivateMessage(2002, 'Анатолий');
         $this->assertNull($user->fresh()->pending_command);
+        $this->assertSame([
+            'tab' => 'list',
+            'q' => 'Анатолий',
+            'scope' => 'all',
+        ], $user->fresh()->mini_app_action);
 
         $requests = Http::recorded();
         $this->assertStringContainsString(
@@ -101,6 +106,22 @@ class TelegramWebhookTest extends TestCase
         $this->assertSame(
             route('family.person', Person::query()->first()->id),
             $requests[1][0]->data()['reply_markup']['inline_keyboard'][0][0]['web_app']['url'],
+        );
+    }
+
+    public function test_section_command_is_queued_for_an_already_open_mini_app(): void
+    {
+        $user = TelegramUser::query()->create([
+            'telegram_user_id' => 321,
+            'first_name' => 'Иван',
+            'status' => 'approved',
+        ]);
+
+        $this->sendPrivateMessage(2101, '/photos');
+
+        $this->assertSame(
+            ['tab' => 'gallery'],
+            $user->fresh()->mini_app_action,
         );
     }
 

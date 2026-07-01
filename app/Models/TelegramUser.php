@@ -17,6 +17,7 @@ class TelegramUser extends Model
         'photo_url',
         'status',
         'pending_command',
+        'mini_app_action',
         'is_bot_admin',
         'last_seen_at',
         'last_web_login_at',
@@ -25,6 +26,7 @@ class TelegramUser extends Model
     protected function casts(): array
     {
         return [
+            'mini_app_action' => 'array',
             'is_bot_admin' => 'boolean',
             'last_seen_at' => 'datetime',
             'last_web_login_at' => 'datetime',

@@ -122,6 +122,31 @@ class MiniAppTest extends TestCase
             ->assertSee('"focusId":'.$child->id, false);
     }
 
+    public function test_open_mini_app_can_consume_queued_navigation(): void
+    {
+        $user = TelegramUser::query()->create([
+            'telegram_user_id' => 79,
+            'status' => 'approved',
+            'mini_app_action' => [
+                'tab' => 'list',
+                'relation' => 'nephews',
+            ],
+        ]);
+
+        $this->withSession(['family_telegram_user_id' => $user->id])
+            ->postJson('/api/family/navigation')
+            ->assertOk()
+            ->assertJsonPath('action.tab', 'list')
+            ->assertJsonPath('action.relation', 'nephews');
+
+        $this->assertNull($user->fresh()->mini_app_action);
+
+        $this->withSession(['family_telegram_user_id' => $user->id])
+            ->postJson('/api/family/navigation')
+            ->assertOk()
+            ->assertJsonPath('action', null);
+    }
+
     private function signedInitData(int $userId): string
     {
         $data = [

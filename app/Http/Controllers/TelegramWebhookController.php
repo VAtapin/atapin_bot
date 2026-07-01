@@ -142,7 +142,7 @@ class TelegramWebhookController extends Controller
         if (! str_starts_with($command, '/') && $user->pending_command) {
             $pendingCommand = $user->pending_command;
             $user->update(['pending_command' => null]);
-            $this->sendPersonSearch($chat['id'], $text, $pendingCommand);
+            $this->sendPersonSearch($chat['id'], $user, $text, $pendingCommand);
 
             return;
         }
@@ -150,6 +150,8 @@ class TelegramWebhookController extends Controller
         if (str_starts_with($command, '/') && ! in_array($command, ['/person', '/family'], true)) {
             $user->update(['pending_command' => null]);
         }
+
+        $this->queueMiniAppActionForCommand($user, $command);
 
         match ($command) {
             '/tree' => $this->sendTreeButton($chat['id']),
@@ -394,8 +396,12 @@ class TelegramWebhookController extends Controller
         );
     }
 
-    private function sendPersonSearch(int $chatId, string $query, string $mode = 'person'): void
-    {
+    private function sendPersonSearch(
+        int $chatId,
+        TelegramUser $user,
+        string $query,
+        string $mode = 'person',
+    ): void {
         $query = trim($query);
 
         if ($query === '') {
@@ -424,6 +430,12 @@ class TelegramWebhookController extends Controller
             return;
         }
 
+        $this->queueMiniAppAction($user, [
+            'tab' => 'list',
+            'q' => $query,
+            'scope' => 'all',
+        ]);
+
         $keyboard = $people->map(fn (Person $person): array => [
             $this->miniAppButton(
                 $chatId,
@@ -438,6 +450,44 @@ class TelegramWebhookController extends Controller
             "🔎 <b>{$title}</b>\nНайдено: ".$people->count(),
             ['reply_markup' => ['inline_keyboard' => $keyboard]],
         );
+    }
+
+    private function queueMiniAppActionForCommand(TelegramUser $user, string $command): void
+    {
+        $action = match ($command) {
+            '/tree' => ['tab' => 'tree', 'focus' => $user->person_id, 'scope' => 'branch'],
+            '/list' => ['tab' => 'list', 'focus' => $user->person_id, 'scope' => 'branch'],
+            '/photos' => ['tab' => 'gallery'],
+            '/birthdays' => ['tab' => 'birthdays'],
+            '/me' => ['tab' => 'me'],
+            '/grandchildren' => $user->person_id ? [
+                'tab' => 'list',
+                'focus' => $user->person_id,
+                'relation' => 'grandchildren',
+                'scope' => 'branch',
+            ] : null,
+            '/nephews' => $user->person_id ? [
+                'tab' => 'list',
+                'focus' => $user->person_id,
+                'relation' => 'nephews',
+                'scope' => 'branch',
+            ] : null,
+            default => null,
+        };
+
+        if ($action) {
+            $this->queueMiniAppAction($user, $action);
+        }
+    }
+
+    private function queueMiniAppAction(TelegramUser $user, array $action): void
+    {
+        $user->updateQuietly([
+            'mini_app_action' => array_filter(
+                $action,
+                fn (mixed $value): bool => $value !== null && $value !== '',
+            ),
+        ]);
     }
 
     private function sendMyFamily(int $chatId, TelegramUser $user): void
