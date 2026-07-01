@@ -6,7 +6,6 @@ use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
-use App\Models\PhotoAlbum;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
@@ -93,7 +92,6 @@ GEDCOM);
             $this->assertSame(2, ParentChild::query()->count());
             $this->assertSame(2, $ivan->photos()->count());
             $this->assertSame(1, $ivan->photos()->where('is_primary', true)->count());
-            $this->assertSame(1, PhotoAlbum::query()->where('person_id', $ivan->id)->count());
             $this->assertSame(
                 ['Портрет', 'Семейная фотография'],
                 PersonPhoto::query()->where('person_id', $ivan->id)->orderBy('sort_order')->pluck('title')->all(),

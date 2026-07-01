@@ -15,6 +15,7 @@ const state = {
         : 'tree',
     scope: 'branch',
     lastTreeData: null,
+    galleryPhotos: new Map(),
     focusId: window.familyAppConfig?.focusId
         ?? initialParams.get('focus'),
 };
@@ -512,23 +513,31 @@ async function loadGallery() {
 
     try {
         const data = await api('/api/family/gallery');
+        state.galleryPhotos = new Map(data.photos.map((photo) => [String(photo.id), photo]));
         $('#gallery-grid').innerHTML = data.photos.length
             ? data.photos.map((photo) => `
-                <button class="gallery-item" type="button" data-person-id="${photo.person_id}">
-                    <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.title || photo.person_name)}" loading="lazy">
+                <button class="gallery-item" type="button" data-photo-id="${photo.id}">
+                    <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.person_name)}" loading="lazy">
                     <span>
-                        <strong>${escapeHtml(photo.title || photo.person_name)}</strong>
-                        <small>${escapeHtml(photo.album || photo.person_name)}</small>
+                        <strong>${escapeHtml(photo.person_name)}</strong>
+                        ${photo.taken_at ? `<small>${escapeHtml(formatDate(photo.taken_at))}</small>` : ''}
                     </span>
                 </button>
             `).join('')
             : '<p class="empty-list">Фотографий пока нет.</p>';
-        $('#gallery-grid').querySelectorAll('[data-person-id]').forEach((item) => {
+        $('#gallery-grid').querySelectorAll('[data-photo-id]').forEach((item) => {
             item.addEventListener('click', async () => {
-                state.focusId = item.dataset.personId;
+                const photo = state.galleryPhotos.get(String(item.dataset.photoId));
+
+                if (!photo?.is_associated) {
+                    showStandalonePhoto(photo);
+                    return;
+                }
+
+                state.focusId = photo.person_id;
                 state.scope = 'branch';
                 await loadTree();
-                showPerson(item.dataset.personId);
+                showPerson(photo.person_id);
             });
         });
     } catch (error) {
@@ -536,6 +545,20 @@ async function loadGallery() {
     } finally {
         setLoading(false);
     }
+}
+
+function showStandalonePhoto(photo) {
+    if (!photo) return;
+
+    $('#person-content').innerHTML = `
+        <div class="standalone-photo">
+            <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.person_name)}">
+            <h2>${escapeHtml(photo.person_name)}</h2>
+            ${photo.description ? `<p>${escapeHtml(photo.description)}</p>` : ''}
+            <small>Фотография пока не привязана к человеку в семейном древе.</small>
+        </div>
+    `;
+    $('#person-sheet').hidden = false;
 }
 
 function field(name, label, value = '', type = 'text') {

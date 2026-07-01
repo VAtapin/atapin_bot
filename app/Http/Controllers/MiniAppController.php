@@ -174,24 +174,55 @@ class MiniAppController extends Controller
     {
         $photos = PersonPhoto::query()
             ->with(['person', 'album'])
-            ->whereHas('person', fn (Builder $query) => $query->where('is_published', true))
+            ->whereHas('person', fn (Builder $query) => $query
+                ->where('is_published', true)
+                ->orWhere('gedcom_id', 'I88888888'))
             ->latest('taken_at')
             ->latest('id')
-            ->get()
+            ->get();
+        $photos = $this->withoutGedcomCutoutDuplicates($photos)
             ->filter(fn ($photo): bool => filled($photo->url))
-            ->map(fn ($photo): array => [
-                'id' => (string) $photo->id,
-                'url' => $photo->url,
-                'title' => $photo->title,
-                'description' => $photo->description,
-                'taken_at' => $photo->taken_at?->toDateString(),
-                'album' => $photo->album?->title,
-                'person_id' => (string) $photo->person_id,
-                'person_name' => $photo->person->full_name,
-            ])
+            ->map(function ($photo): array {
+                $isUnassociated = $photo->person->gedcom_id === 'I88888888';
+
+                return [
+                    'id' => (string) $photo->id,
+                    'url' => $photo->url,
+                    'title' => $photo->title,
+                    'description' => $photo->description,
+                    'taken_at' => $photo->taken_at?->toDateString(),
+                    'person_id' => $isUnassociated ? null : (string) $photo->person_id,
+                    'person_name' => $isUnassociated
+                        ? ($photo->title ?: 'Фотография без привязки')
+                        : $photo->person->full_name,
+                    'is_associated' => ! $isUnassociated,
+                ];
+            })
             ->values();
 
         return response()->json(['photos' => $photos]);
+    }
+
+    private function withoutGedcomCutoutDuplicates($photos)
+    {
+        $originalPhotoIds = $photos
+            ->filter(fn (PersonPhoto $photo): bool => ($photo->gedcom_data['_PARENTPHOTO'] ?? null) === 'Y')
+            ->pluck('gedcom_data._PHOTO_RIN')
+            ->filter()
+            ->flip();
+
+        return $photos
+            ->reject(function (PersonPhoto $photo) use ($originalPhotoIds): bool {
+                $data = $photo->gedcom_data ?? [];
+                $parentPhotoId = $data['_PARENTRIN'] ?? null;
+                $isDerivedCutout = ($data['_CUTOUT'] ?? null) === 'Y'
+                    || ($data['_PERSONALPHOTO'] ?? null) === 'Y';
+
+                return $isDerivedCutout
+                    && $parentPhotoId
+                    && $originalPhotoIds->has($parentPhotoId);
+            })
+            ->values();
     }
 
     public function navigation(Request $request): JsonResponse

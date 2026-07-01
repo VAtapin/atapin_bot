@@ -6,7 +6,6 @@ use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
-use App\Models\PhotoAlbum;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -396,7 +395,7 @@ class ImportGedcom extends Command
                         'raw' => $source['raw'],
                     ],
                     'imported_at' => now(),
-                    'is_published' => true,
+                    'is_published' => ! $this->isUnassociatedPhotosRecord($gedcomId, $source),
                 ],
             );
             $person->save();
@@ -616,10 +615,6 @@ class ImportGedcom extends Command
             return;
         }
 
-        $album = PhotoAlbum::query()->firstOrCreate(
-            ['person_id' => $person->id, 'title' => 'Импорт GEDCOM'],
-            ['description' => 'Фотографии, импортированные из GEDCOM'],
-        );
         $primaryUrl = $this->primaryPhoto($images->all());
         $primaryPath = null;
 
@@ -638,7 +633,7 @@ class ImportGedcom extends Command
             $isPrimary = $url === $primaryUrl;
             $record->fill([
                 'person_id' => $person->id,
-                'photo_album_id' => $album->id,
+                'photo_album_id' => null,
                 'path' => $path ?? $record->path,
                 'source_url' => $url,
                 'title' => $photo['TITL'] ?? null,
@@ -664,6 +659,12 @@ class ImportGedcom extends Command
         if ($primaryPath) {
             $person->updateQuietly(['photo_path' => $primaryPath]);
         }
+    }
+
+    private function isUnassociatedPhotosRecord(string $gedcomId, array $source): bool
+    {
+        return $gedcomId === 'I88888888'
+            || mb_strtolower(trim((string) $source['given_name'])) === 'unassociated photos';
     }
 
     private function isImagePhoto(array $photo): bool

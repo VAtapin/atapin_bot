@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ParentChild;
 use App\Models\Person;
+use App\Models\PersonPhoto;
 use App\Models\TelegramUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -145,6 +146,44 @@ class MiniAppTest extends TestCase
             ->postJson('/api/family/navigation')
             ->assertOk()
             ->assertJsonPath('action', null);
+    }
+
+    public function test_gallery_hides_gedcom_cutout_duplicate_without_deleting_photos(): void
+    {
+        $person = Person::factory()->create([
+            'first_name' => 'София',
+            'last_name' => 'Атапин',
+        ]);
+        PersonPhoto::query()->create([
+            'person_id' => $person->id,
+            'source_url' => 'https://example.test/cutout.jpg',
+            'gedcom_data' => [
+                '_CUTOUT' => 'Y',
+                '_PARENTRIN' => 'MH:P100',
+                '_PHOTO_RIN' => 'MH:P101',
+            ],
+        ]);
+        PersonPhoto::query()->create([
+            'person_id' => $person->id,
+            'source_url' => 'https://example.test/original.jpg',
+            'gedcom_data' => [
+                '_PARENTPHOTO' => 'Y',
+                '_PHOTO_RIN' => 'MH:P100',
+            ],
+        ]);
+        $user = TelegramUser::query()->create([
+            'telegram_user_id' => 80,
+            'status' => 'approved',
+        ]);
+
+        $this->withSession(['family_telegram_user_id' => $user->id])
+            ->getJson('/api/family/gallery')
+            ->assertOk()
+            ->assertJsonCount(1, 'photos')
+            ->assertJsonPath('photos.0.person_name', 'Атапин София')
+            ->assertJsonPath('photos.0.url', 'https://example.test/original.jpg');
+
+        $this->assertSame(2, PersonPhoto::query()->count());
     }
 
     private function signedInitData(int $userId): string
