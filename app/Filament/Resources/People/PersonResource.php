@@ -5,9 +5,11 @@ namespace App\Filament\Resources\People;
 use App\Filament\Resources\People\Pages\CreatePerson;
 use App\Filament\Resources\People\Pages\EditPerson;
 use App\Filament\Resources\People\Pages\ListPeople;
+use App\Filament\Resources\People\RelationManagers\AlbumsRelationManager;
 use App\Filament\Resources\People\RelationManagers\ChildLinksRelationManager;
 use App\Filament\Resources\People\RelationManagers\ParentLinksRelationManager;
 use App\Filament\Resources\People\RelationManagers\PartnershipsRelationManager;
+use App\Filament\Resources\People\RelationManagers\PhotosRelationManager;
 use App\Models\Person;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
@@ -98,7 +100,7 @@ class PersonResource extends Resource
                     ->rows(6)
                     ->columnSpanFull(),
                 FileUpload::make('photo_path')
-                    ->label('Фотография')
+                    ->label('Основная фотография (быстрая загрузка)')
                     ->image()
                     ->imageEditor()
                     ->directory('people/photos')
@@ -117,6 +119,20 @@ class PersonResource extends Resource
                     ->label('ID в GEDCOM')
                     ->disabled()
                     ->dehydrated(false),
+                TextInput::make('login')
+                    ->label('Логин для сайта')
+                    ->unique(ignoreRecord: true)
+                    ->autocomplete(false),
+                TextInput::make('password')
+                    ->label('Новый пароль для сайта')
+                    ->password()
+                    ->revealable()
+                    ->autocomplete(false)
+                    ->afterStateHydrated(fn (TextInput $component) => $component->state(null))
+                    ->dehydrated(fn (?string $state): bool => filled($state)),
+                Toggle::make('web_login_enabled')
+                    ->label('Разрешить вход по логину и паролю')
+                    ->default(false),
             ]);
     }
 
@@ -125,9 +141,8 @@ class PersonResource extends Resource
         return $table
             ->recordTitleAttribute('full_name')
             ->columns([
-                ImageColumn::make('photo_path')
+                ImageColumn::make('photo_url')
                     ->label('Фото')
-                    ->disk('public')
                     ->circular(),
                 TextColumn::make('full_name')
                     ->label('ФИО')
@@ -206,6 +221,8 @@ class PersonResource extends Resource
             ParentLinksRelationManager::class,
             PartnershipsRelationManager::class,
             ChildLinksRelationManager::class,
+            AlbumsRelationManager::class,
+            PhotosRelationManager::class,
         ];
     }
 

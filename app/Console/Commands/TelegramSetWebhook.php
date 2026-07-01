@@ -31,16 +31,20 @@ class TelegramSetWebhook extends Command
         $bot->request('setWebhook', [
             'url' => $baseUrl.'/api/telegram/webhook',
             'secret_token' => $secret,
-            'allowed_updates' => ['message', 'edited_message'],
+            'allowed_updates' => ['message', 'edited_message', 'callback_query'],
             'drop_pending_updates' => false,
         ]);
 
         $bot->request('setMyCommands', [
             'commands' => [
                 ['command' => 'tree', 'description' => 'Открыть семейное древо'],
+                ['command' => 'list', 'description' => 'Список родственников'],
+                ['command' => 'photos', 'description' => 'Семейная фотогалерея'],
                 ['command' => 'person', 'description' => 'Найти человека по имени'],
                 ['command' => 'family', 'description' => 'Открыть ветвь человека'],
                 ['command' => 'me', 'description' => 'Моя карточка и близкие'],
+                ['command' => 'grandchildren', 'description' => 'Мои внуки'],
+                ['command' => 'nephews', 'description' => 'Мои племянники'],
                 ['command' => 'birthdays', 'description' => 'Ближайшие дни рождения'],
                 ['command' => 'events', 'description' => 'Ближайшие семейные события'],
                 ['command' => 'stats', 'description' => 'Статистика семейного архива'],

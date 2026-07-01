@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Person;
 use App\Models\TelegramUser;
 use App\Services\TelegramInitData;
 use Closure;
@@ -22,6 +23,20 @@ class VerifyTelegramMiniApp
         $initData = (string) ($request->header('X-Telegram-Init-Data') ?: $request->query('initData', ''));
         $telegramUser = null;
         $telegramData = null;
+
+        if ($request->session()->has('family_person_id')) {
+            $person = Person::query()
+                ->where('web_login_enabled', true)
+                ->find($request->session()->get('family_person_id'));
+
+            if ($person) {
+                $request->attributes->set('familyPerson', $person);
+
+                return $next($request);
+            }
+
+            $request->session()->forget('family_person_id');
+        }
 
         if ($initData !== '') {
             try {
@@ -49,6 +64,7 @@ class VerifyTelegramMiniApp
                 'login_url' => config('services.telegram.oidc_client_id')
                     ? route('telegram.login')
                     : null,
+                'password_login' => true,
             ], 401);
         }
 
@@ -76,6 +92,7 @@ class VerifyTelegramMiniApp
             return response()->json([
                 'message' => 'Сессия входа устарела. Войдите через Telegram ещё раз.',
                 'login_url' => route('telegram.login'),
+                'password_login' => true,
             ], 401);
         }
 

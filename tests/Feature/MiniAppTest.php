@@ -89,6 +89,39 @@ class MiniAppTest extends TestCase
             ->assertJsonCount(1, 'people');
     }
 
+    public function test_relation_filter_can_show_grandchildren_and_person_route_sets_focus(): void
+    {
+        $grandparent = Person::factory()->create();
+        $child = Person::factory()->create();
+        $grandchild = Person::factory()->create();
+        ParentChild::query()->create([
+            'parent_id' => $grandparent->id,
+            'child_id' => $child->id,
+            'type' => 'biological',
+        ]);
+        ParentChild::query()->create([
+            'parent_id' => $child->id,
+            'child_id' => $grandchild->id,
+            'type' => 'biological',
+        ]);
+        $user = TelegramUser::query()->create([
+            'telegram_user_id' => 78,
+            'status' => 'approved',
+            'person_id' => $grandparent->id,
+        ]);
+
+        $this->withSession(['family_telegram_user_id' => $user->id])
+            ->getJson('/api/family/tree?relation=grandchildren')
+            ->assertOk()
+            ->assertJsonCount(1, 'people')
+            ->assertJsonPath('people.0.id', (string) $grandchild->id)
+            ->assertJsonPath('people.0.relation', 'grandchildren');
+
+        $this->get('/family/person/'.$child->id)
+            ->assertOk()
+            ->assertSee('"focusId":'.$child->id, false);
+    }
+
     private function signedInitData(int $userId): string
     {
         $data = [

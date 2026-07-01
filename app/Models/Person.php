@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 
@@ -17,9 +18,14 @@ class Person extends Model
 
     use SoftDeletes;
 
+    protected $hidden = ['password'];
+
     protected $fillable = [
         'first_name',
         'gedcom_id',
+        'login',
+        'password',
+        'web_login_enabled',
         'middle_name',
         'last_name',
         'maiden_name',
@@ -48,6 +54,8 @@ class Person extends Model
             'death_date' => 'date',
             'gedcom_data' => 'array',
             'imported_at' => 'datetime',
+            'password' => 'hashed',
+            'web_login_enabled' => 'boolean',
             'is_published' => 'boolean',
         ];
     }
@@ -79,7 +87,11 @@ class Person extends Model
 
     public function getPhotoUrlAttribute(): ?string
     {
-        return $this->photo_path ? Storage::disk('public')->url($this->photo_path) : null;
+        if ($this->photo_path) {
+            return Storage::disk('public')->url($this->photo_path);
+        }
+
+        return $this->primaryPhoto?->url ?? $this->photos()->first()?->url;
     }
 
     public function parentLinks(): HasMany
@@ -130,5 +142,20 @@ class Person extends Model
     public function events(): HasMany
     {
         return $this->hasMany(FamilyEvent::class);
+    }
+
+    public function photos(): HasMany
+    {
+        return $this->hasMany(PersonPhoto::class)->orderBy('sort_order');
+    }
+
+    public function albums(): HasMany
+    {
+        return $this->hasMany(PhotoAlbum::class)->orderBy('sort_order');
+    }
+
+    public function primaryPhoto(): HasOne
+    {
+        return $this->hasOne(PersonPhoto::class)->where('is_primary', true);
     }
 }

@@ -34,6 +34,7 @@ class TelegramWebhookController extends Controller
         ]) + $request->all();
 
         $message = $payload['message'] ?? $payload['edited_message'] ?? null;
+        $callback = $payload['callback_query'] ?? null;
         $chat = $message['chat'] ?? null;
         $from = $message['from'] ?? null;
 
@@ -56,6 +57,10 @@ class TelegramWebhookController extends Controller
         try {
             if ($message && $chat && $from) {
                 $this->handleMessage($message, $chat, $from);
+            }
+
+            if ($callback) {
+                $this->handleAccessCallback($callback);
             }
 
             $update->update(['processed_at' => now()]);
@@ -134,16 +139,117 @@ class TelegramWebhookController extends Controller
             return;
         }
 
+        if (! str_starts_with($command, '/') && $user->pending_command) {
+            $pendingCommand = $user->pending_command;
+            $user->update(['pending_command' => null]);
+            $this->sendPersonSearch($chat['id'], $text, $pendingCommand);
+
+            return;
+        }
+
+        if (str_starts_with($command, '/') && ! in_array($command, ['/person', '/family'], true)) {
+            $user->update(['pending_command' => null]);
+        }
+
         match ($command) {
             '/tree' => $this->sendTreeButton($chat['id']),
+            '/list' => $this->sendSectionButton($chat['id'], 'Семейный список', 'list'),
+            '/photos' => $this->sendSectionButton($chat['id'], 'Семейные фотографии', 'gallery'),
             '/birthdays' => $this->sendBirthdays($chat['id']),
-            '/person', '/family' => $this->sendPersonSearch($chat['id'], $arguments),
+            '/person' => $this->askForPersonName($chat['id'], $user, 'person'),
+            '/family' => $this->askForPersonName($chat['id'], $user, 'family'),
             '/me' => $this->sendMyFamily($chat['id'], $user),
+            '/grandchildren' => $this->sendRelativeList($chat['id'], $user, 'grandchildren', 'Мои внуки'),
+            '/nephews' => $this->sendRelativeList($chat['id'], $user, 'nephews', 'Мои племянники'),
             '/events' => $this->sendEvents($chat['id']),
             '/stats' => $this->sendStats($chat['id']),
             '/help' => $this->sendHelp($chat['id']),
             default => null,
         };
+    }
+
+    private function handleAccessCallback(array $callback): void
+    {
+        $from = $callback['from'] ?? [];
+        $data = (string) ($callback['data'] ?? '');
+        $isConfiguredAdmin = in_array(
+            (string) ($from['id'] ?? ''),
+            config('services.telegram.admin_ids', []),
+            true,
+        );
+        $actor = TelegramUser::query()
+            ->where('telegram_user_id', $from['id'] ?? 0)
+            ->first();
+
+        if (! $isConfiguredAdmin && ! ($actor?->is_bot_admin && $actor->isApproved())) {
+            $this->bot->request('answerCallbackQuery', [
+                'callback_query_id' => $callback['id'],
+                'text' => 'Недостаточно прав.',
+                'show_alert' => true,
+            ]);
+
+            return;
+        }
+
+        if (! preg_match('/^access:(approve|block|admin|unadmin):(\d+)$/', $data, $matches)) {
+            return;
+        }
+
+        $user = TelegramUser::query()->find($matches[2]);
+
+        if (! $user) {
+            $this->bot->request('answerCallbackQuery', [
+                'callback_query_id' => $callback['id'],
+                'text' => 'Пользователь уже удалён.',
+            ]);
+
+            return;
+        }
+
+        match ($matches[1]) {
+            'approve' => $user->update(['status' => 'approved']),
+            'block' => $user->update(['status' => 'blocked']),
+            'admin' => $user->update(['status' => 'approved', 'is_bot_admin' => true]),
+            'unadmin' => $user->update(['is_bot_admin' => false]),
+        };
+
+        $actionText = match ($matches[1]) {
+            'approve' => '✅ Доступ разрешён',
+            'block' => '⛔ Доступ заблокирован',
+            'admin' => '👑 Назначен администратором',
+            'unadmin' => '👤 Права администратора сняты',
+        };
+
+        $this->bot->request('answerCallbackQuery', [
+            'callback_query_id' => $callback['id'],
+            'text' => $actionText,
+        ]);
+
+        if (isset($callback['message']['chat']['id'], $callback['message']['message_id'])) {
+            $this->bot->request('editMessageText', [
+                'chat_id' => $callback['message']['chat']['id'],
+                'message_id' => $callback['message']['message_id'],
+                'text' => '👤 <b>'.e($user->display_name)."</b>\n\n{$actionText}",
+                'parse_mode' => 'HTML',
+                'reply_markup' => $this->accessKeyboard($user),
+            ]);
+        }
+    }
+
+    private function accessKeyboard(TelegramUser $user): array
+    {
+        return [
+            'inline_keyboard' => [
+                [[
+                    'text' => $user->isApproved() ? '⛔ Отключить доступ' : '✅ Разрешить доступ',
+                    'callback_data' => 'access:'.($user->isApproved() ? 'block' : 'approve').':'.$user->id,
+                ]],
+                [[
+                    'text' => $user->is_bot_admin ? '👤 Снять права админа' : '👑 Сделать админом',
+                    'callback_data' => 'access:'.($user->is_bot_admin ? 'unadmin' : 'admin').':'.$user->id,
+                ]],
+            ],
+        ];
     }
 
     private function sendWelcome(int $chatId, TelegramUser $user): void
@@ -161,7 +267,7 @@ class TelegramWebhookController extends Controller
             $chatId,
             e(Setting::value('welcome_text', 'Добро пожаловать в семейный архив!'))
                 ."\n\nЗдесь можно открыть семейное древо и посмотреть ближайшие дни рождения.",
-            $this->treeKeyboard(),
+            $this->treeKeyboard($chatId),
         );
     }
 
@@ -170,7 +276,7 @@ class TelegramWebhookController extends Controller
         $this->bot->sendMessage(
             $chatId,
             'Откройте семейное древо:',
-            $this->treeKeyboard(),
+            $this->treeKeyboard($chatId),
         );
     }
 
@@ -210,7 +316,12 @@ class TelegramWebhookController extends Controller
             $name = e($person->full_name);
             $when = $item['days'] === 0 ? 'сегодня' : $date->translatedFormat('j F');
 
-            return "🎂 <b>{$name}</b> — {$when}";
+            $birthDate = $person->birth_date->format('d.m.Y');
+            $age = $person->birth_date->diffInYears($date);
+
+            return "🎂 <b>{$name}</b>\n"
+                ."   📅 {$birthDate} · исполнится {$age}\n"
+                ."   ⏳ {$when}";
         })->implode("\n");
 
         $this->bot->sendMessage($chatId, "<b>Ближайшие дни рождения</b>\n\n{$lines}");
@@ -222,9 +333,13 @@ class TelegramWebhookController extends Controller
             $chatId,
             "<b>Команды</b>\n"
             ."/tree — открыть древо\n"
-            ."/person Имя — найти человека\n"
-            ."/family Имя — открыть его семейную ветвь\n"
+            ."/list — удобный список родственников\n"
+            ."/photos — семейная фотогалерея\n"
+            ."/person — найти человека (имя напишите следующим сообщением)\n"
+            ."/family — открыть семейную ветвь найденного человека\n"
             ."/me — моя карточка и близкие\n"
+            ."/grandchildren — мои внуки\n"
+            ."/nephews — мои племянники\n"
             ."/birthdays — ближайшие дни рождения\n"
             ."/events — семейные события\n"
             ."/stats — статистика архива\n"
@@ -232,12 +347,59 @@ class TelegramWebhookController extends Controller
         );
     }
 
-    private function sendPersonSearch(int $chatId, string $query): void
+    private function askForPersonName(int $chatId, TelegramUser $user, string $mode): void
+    {
+        $user->update(['pending_command' => $mode]);
+        $label = $mode === 'family' ? 'семейную ветвь' : 'человека';
+
+        $this->bot->sendMessage(
+            $chatId,
+            "🔎 Напишите следующим сообщением имя или фамилию.\n\nЯ найду {$label}.",
+        );
+    }
+
+    private function sendSectionButton(int $chatId, string $title, string $tab): void
+    {
+        $this->bot->sendMessage($chatId, 'Открыть раздел «'.e($title).'»:',
+            ['reply_markup' => ['inline_keyboard' => [[
+                $this->miniAppButton(
+                    $chatId,
+                    '🌿 '.$title,
+                    config('services.telegram.mini_app_url').'?'.http_build_query(['tab' => $tab]),
+                ),
+            ]]]],
+        );
+    }
+
+    private function sendRelativeList(
+        int $chatId,
+        TelegramUser $user,
+        string $relation,
+        string $title,
+    ): void {
+        if (! $user->person_id) {
+            $this->bot->sendMessage($chatId, 'Сначала администратор должен привязать вас к человеку в древе.');
+
+            return;
+        }
+
+        $url = $this->familyUrl($user->person_id).'?'.http_build_query([
+            'tab' => 'list',
+            'relation' => $relation,
+        ]);
+        $this->bot->sendMessage($chatId, 'Открыть раздел «'.e($title).'»:',
+            ['reply_markup' => ['inline_keyboard' => [[
+                $this->miniAppButton($chatId, '🌿 '.$title, $url),
+            ]]]],
+        );
+    }
+
+    private function sendPersonSearch(int $chatId, string $query, string $mode = 'person'): void
     {
         $query = trim($query);
 
         if ($query === '') {
-            $this->bot->sendMessage($chatId, 'Напишите имя после команды, например: <code>/person Анатолий Атапин</code>');
+            $this->bot->sendMessage($chatId, 'Напишите имя или фамилию следующим сообщением.');
 
             return;
         }
@@ -262,14 +424,18 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        $keyboard = $people->map(fn (Person $person): array => [[
-            'text' => '🌿 '.$person->full_name,
-            'web_app' => ['url' => $this->familyUrl($person->id)],
-        ]])->values()->all();
+        $keyboard = $people->map(fn (Person $person): array => [
+            $this->miniAppButton(
+                $chatId,
+                '🌿 '.$person->full_name,
+                $this->familyUrl($person->id),
+            ),
+        ])->values()->all();
 
+        $title = $mode === 'family' ? 'Выберите семейную ветвь:' : 'Выберите человека:';
         $this->bot->sendMessage(
             $chatId,
-            '<b>Найдено:</b> '.$people->count(),
+            "🔎 <b>{$title}</b>\nНайдено: ".$people->count(),
             ['reply_markup' => ['inline_keyboard' => $keyboard]],
         );
     }
@@ -289,6 +455,12 @@ class TelegramWebhookController extends Controller
 
         $parents = $person->parents()->get()->pluck('full_name')->implode(', ') ?: 'не указаны';
         $children = $person->children()->get()->pluck('full_name')->implode(', ') ?: 'не указаны';
+        $siblings = Person::query()
+            ->whereHas('parents', fn ($query) => $query->whereIn('people.id', $person->parents()->pluck('people.id')))
+            ->whereKeyNot($person->id)
+            ->get()
+            ->pluck('full_name')
+            ->implode(', ') ?: 'не указаны';
         $partners = Partnership::query()
             ->with(['partnerOne', 'partnerTwo'])
             ->where('partner_one_id', $person->id)
@@ -299,13 +471,29 @@ class TelegramWebhookController extends Controller
                 : $partnership->partnerOne->full_name)
             ->implode(', ') ?: 'не указаны';
 
+        $birth = $person->birth_date
+            ? $person->birth_date->translatedFormat('d.m.Y')
+                .($person->death_date ? '' : ' · '.$person->age.' лет')
+            : 'не указана';
+        $deathLine = $person->death_date
+            ? "\n🕯 <b>Дата смерти:</b> ".$person->death_date->translatedFormat('d.m.Y')
+            : '';
+
         $this->bot->sendMessage(
             $chatId,
-            '<b>'.e($person->full_name)."</b>\n"
-            .'Родители: '.e($parents)."\n"
-            .'Супруги / партнёры: '.e($partners)."\n"
-            .'Дети: '.e($children),
-            $this->treeKeyboard($person->id),
+            "🌿 <b>МОЯ КАРТОЧКА</b>\n\n"
+            .'👤 <b>'.e($person->full_name)."</b>\n"
+            .'🎂 <b>Дата рождения:</b> '.e($birth)
+            .$deathLine."\n"
+            .'📍 <b>Место рождения:</b> '.e($person->birth_place ?: 'не указано')."\n"
+            .'🏠 <b>Город:</b> '.e($person->current_city ?: 'не указан')."\n"
+            .'💼 <b>Род занятий:</b> '.e($person->occupation ?: 'не указан')."\n\n"
+            ."👪 <b>СЕМЬЯ</b>\n"
+            .'⬆️ <b>Родители:</b> '.e($parents)."\n"
+            .'💍 <b>Супруги / партнёры:</b> '.e($partners)."\n"
+            .'↔️ <b>Братья и сёстры:</b> '.e($siblings)."\n"
+            .'⬇️ <b>Дети:</b> '.e($children),
+            $this->treeKeyboard($chatId, $person->id),
         );
     }
 
@@ -355,26 +543,38 @@ class TelegramWebhookController extends Controller
         );
     }
 
-    private function treeKeyboard(?int $focusId = null): array
+    private function treeKeyboard(int $chatId, ?int $focusId = null): array
     {
         return [
             'reply_markup' => [
                 'inline_keyboard' => [[
-                    [
-                        'text' => '🌳 Открыть семейное древо',
-                        'web_app' => ['url' => $focusId
+                    $this->miniAppButton(
+                        $chatId,
+                        '🌳 Открыть семейное древо',
+                        $focusId
                             ? $this->familyUrl($focusId)
-                            : config('services.telegram.mini_app_url')],
-                    ],
+                            : config('services.telegram.mini_app_url'),
+                    ),
                 ]],
             ],
         ];
     }
 
+    private function miniAppButton(int $chatId, string $text, string $url): array
+    {
+        $button = ['text' => $text];
+
+        if ($chatId > 0) {
+            $button['web_app'] = ['url' => $url];
+        } else {
+            $button['url'] = $url;
+        }
+
+        return $button;
+    }
+
     private function familyUrl(int $focusId): string
     {
-        $url = (string) config('services.telegram.mini_app_url');
-
-        return $url.(str_contains($url, '?') ? '&' : '?').'focus='.$focusId;
+        return route('family.person', ['person' => $focusId]);
     }
 }

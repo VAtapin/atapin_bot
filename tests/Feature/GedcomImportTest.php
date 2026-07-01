@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
+use App\Models\PersonPhoto;
+use App\Models\PhotoAlbum;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
@@ -34,6 +36,15 @@ class GedcomImportTest extends TestCase
 3 CITY Berlin
 3 CTRY Германия
 1 OCCU Инженер
+1 OBJE
+2 FORM jpg
+2 FILE https://example.test/ivan-1.jpg
+2 TITL Портрет
+2 _PRIM Y
+1 OBJE
+2 FORM jpg
+2 FILE https://example.test/ivan-2.jpg
+2 TITL Семейная фотография
 0 @I2@ INDI
 1 NAME Анна /Петрова/
 2 GIVN Анна
@@ -80,11 +91,19 @@ GEDCOM);
             $this->assertNotEmpty($ivan->gedcom_data['raw']);
             $this->assertSame(1, Partnership::query()->count());
             $this->assertSame(2, ParentChild::query()->count());
+            $this->assertSame(2, $ivan->photos()->count());
+            $this->assertSame(1, $ivan->photos()->where('is_primary', true)->count());
+            $this->assertSame(1, PhotoAlbum::query()->where('person_id', $ivan->id)->count());
+            $this->assertSame(
+                ['Портрет', 'Семейная фотография'],
+                PersonPhoto::query()->where('person_id', $ivan->id)->orderBy('sort_order')->pluck('title')->all(),
+            );
 
             $this->assertSame(0, Artisan::call('gedcom:import', ['file' => $path]));
             $this->assertSame(3, Person::query()->count());
             $this->assertSame(1, Partnership::query()->count());
             $this->assertSame(2, ParentChild::query()->count());
+            $this->assertSame(2, PersonPhoto::query()->count());
         } finally {
             @unlink($path);
         }

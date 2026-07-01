@@ -16,6 +16,7 @@ class TelegramUser extends Model
         'language_code',
         'photo_url',
         'status',
+        'pending_command',
         'is_bot_admin',
         'last_seen_at',
         'last_web_login_at',

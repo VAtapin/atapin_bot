@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
+use App\Models\PersonPhoto;
+use App\Models\PhotoAlbum;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -19,7 +21,7 @@ class ImportGedcom extends Command
     protected $signature = 'gedcom:import
         {file : Path to a GEDCOM file}
         {--fresh : Replace all people and family links}
-        {--photos : Download primary photos}
+        {--photos : Download all GEDCOM photos}
         {--dry-run : Parse and report without changing the database}';
 
     protected $description = 'Import people, families, places and all raw facts from GEDCOM';
@@ -30,6 +32,8 @@ class ImportGedcom extends Command
 
     private array $idMap = [];
 
+    private ?array $existingPhotoFiles = null;
+
     private array $stats = [
         'residences' => 0,
         'residence_cities' => 0,
@@ -38,6 +42,7 @@ class ImportGedcom extends Command
         'burial_places' => 0,
         'photos' => 0,
         'photos_downloaded' => 0,
+        'photos_reused' => 0,
         'photos_failed' => 0,
     ];
 
@@ -85,6 +90,7 @@ class ImportGedcom extends Command
         $this->line('Людей сохранено: '.count($this->idMap));
         $this->line('Семей обработано: '.count($this->families));
         $this->line('Фотографий загружено: '.$this->stats['photos_downloaded']);
+        $this->line('Готовых файлов использовано повторно: '.$this->stats['photos_reused']);
         $this->line('Ошибок фотографий: '.$this->stats['photos_failed']);
 
         return self::SUCCESS;
@@ -359,14 +365,6 @@ class ImportGedcom extends Command
 
             $photoPath = $person->photo_path;
 
-            if ($this->option('photos')) {
-                $photo = $this->primaryPhoto($source['photos']);
-
-                if ($photo) {
-                    $photoPath = $this->downloadPhoto($photo, $gedcomId) ?? $photoPath;
-                }
-            }
-
             $person->fill(
                 [
                     'gedcom_id' => $gedcomId,
@@ -402,6 +400,7 @@ class ImportGedcom extends Command
                 ],
             );
             $person->save();
+            $this->syncPersonPhotos($person, $source['photos'], $gedcomId);
 
             if ($person->trashed()) {
                 $person->restore();
@@ -480,6 +479,8 @@ class ImportGedcom extends Command
 
         try {
             DB::table('family_events')->delete();
+            DB::table('person_photos')->delete();
+            DB::table('photo_albums')->delete();
             DB::table('parent_children')->delete();
             DB::table('partnerships')->delete();
             DB::table('telegram_users')->update(['person_id' => null]);
@@ -605,7 +606,75 @@ class ImportGedcom extends Command
         return $photo['FILE'] ?? null;
     }
 
-    private function downloadPhoto(string $url, string $gedcomId): ?string
+    private function syncPersonPhotos(Person $person, array $photos, string $gedcomId): void
+    {
+        $images = collect($photos)
+            ->filter(fn (array $photo): bool => $this->isImagePhoto($photo))
+            ->values();
+
+        if ($images->isEmpty()) {
+            return;
+        }
+
+        $album = PhotoAlbum::query()->firstOrCreate(
+            ['person_id' => $person->id, 'title' => 'Импорт GEDCOM'],
+            ['description' => 'Фотографии, импортированные из GEDCOM'],
+        );
+        $primaryUrl = $this->primaryPhoto($images->all());
+        $primaryPath = null;
+
+        foreach ($images as $index => $photo) {
+            $url = (string) $photo['FILE'];
+            $path = null;
+            $record = PersonPhoto::query()->firstOrNew([
+                'gedcom_key' => $gedcomId.':'.($index + 1),
+            ]);
+
+            if ($this->option('photos')) {
+                $path = $this->existingPhotoPath($record, $gedcomId, $index + 1)
+                    ?: $this->downloadPhoto($url, $gedcomId, $index + 1);
+            }
+
+            $isPrimary = $url === $primaryUrl;
+            $record->fill([
+                'person_id' => $person->id,
+                'photo_album_id' => $album->id,
+                'path' => $path ?? $record->path,
+                'source_url' => $url,
+                'title' => $photo['TITL'] ?? null,
+                'is_primary' => $isPrimary,
+                'sort_order' => $index,
+                'gedcom_data' => $photo,
+            ])->save();
+
+            if ($isPrimary && $record->path) {
+                $primaryPath = $record->path;
+            }
+        }
+
+        PersonPhoto::query()
+            ->where('person_id', $person->id)
+            ->whereNotNull('gedcom_key')
+            ->whereNotIn(
+                'gedcom_key',
+                $images->keys()->map(fn (int $index): string => $gedcomId.':'.($index + 1)),
+            )
+            ->delete();
+
+        if ($primaryPath) {
+            $person->updateQuietly(['photo_path' => $primaryPath]);
+        }
+    }
+
+    private function isImagePhoto(array $photo): bool
+    {
+        $file = (string) ($photo['FILE'] ?? '');
+
+        return str_starts_with($file, 'http')
+            && ! str_ends_with(mb_strtolower(parse_url($file, PHP_URL_PATH) ?: ''), '.pdf');
+    }
+
+    private function downloadPhoto(string $url, string $gedcomId, int $index): ?string
     {
         try {
             $response = Http::timeout(30)->retry(2, 500)->get($url);
@@ -617,7 +686,10 @@ class ImportGedcom extends Command
             }
 
             $extension = $this->imageExtension($response->header('Content-Type'), $url);
-            $path = 'people/photos/'.Str::slug($gedcomId).'.'.$extension;
+            $path = 'people/photos/'
+                .Str::slug($gedcomId).'-'
+                .str_pad((string) $index, 3, '0', STR_PAD_LEFT)
+                .'.'.$extension;
             Storage::disk('public')->put($path, $response->body());
             $this->stats['photos_downloaded']++;
 
@@ -627,6 +699,27 @@ class ImportGedcom extends Command
 
             return null;
         }
+    }
+
+    private function existingPhotoPath(PersonPhoto $photo, string $gedcomId, int $index): ?string
+    {
+        if ($photo->path && Storage::disk('public')->exists($photo->path)) {
+            $this->stats['photos_reused']++;
+
+            return $photo->path;
+        }
+
+        $prefix = Str::slug($gedcomId).'-'.str_pad((string) $index, 3, '0', STR_PAD_LEFT);
+        $this->existingPhotoFiles ??= collect(Storage::disk('public')->files('people/photos'))
+            ->mapWithKeys(fn (string $path): array => [pathinfo($path, PATHINFO_FILENAME) => $path])
+            ->all();
+        $file = $this->existingPhotoFiles[$prefix] ?? null;
+
+        if ($file) {
+            $this->stats['photos_reused']++;
+        }
+
+        return $file;
     }
 
     private function imageExtension(?string $contentType, string $url): string
