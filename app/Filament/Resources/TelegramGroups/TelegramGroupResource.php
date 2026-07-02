@@ -6,12 +6,14 @@ use App\Filament\Resources\TelegramGroups\Pages\CreateTelegramGroup;
 use App\Filament\Resources\TelegramGroups\Pages\EditTelegramGroup;
 use App\Filament\Resources\TelegramGroups\Pages\ListTelegramGroups;
 use App\Models\TelegramGroup;
+use App\Support\CurrentTree;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
@@ -20,6 +22,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class TelegramGroupResource extends Resource
 {
@@ -39,6 +42,13 @@ class TelegramGroupResource extends Resource
     {
         return $schema
             ->components([
+                Select::make('tree_id')
+                    ->label('Семейное дерево')
+                    ->relationship('tree', 'name')
+                    ->default(fn (): ?int => app(CurrentTree::class)->id())
+                    ->disabled(fn (): bool => ! auth()->user()?->is_super_admin)
+                    ->dehydrated()
+                    ->required(),
                 TextInput::make('telegram_chat_id')
                     ->label('ID чата Telegram')
                     ->required()
@@ -143,5 +153,14 @@ class TelegramGroupResource extends Resource
             'create' => CreateTelegramGroup::route('/create'),
             'edit' => EditTelegramGroup::route('/{record}/edit'),
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        return auth()->user()?->is_super_admin
+            ? $query
+            : $query->where('tree_id', app(CurrentTree::class)->id());
     }
 }

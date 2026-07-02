@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FamilyTree;
 use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
 use App\Models\Setting;
+use App\Support\CurrentTree;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -15,15 +17,21 @@ use Illuminate\View\View;
 
 class MiniAppController extends Controller
 {
-    public function index(Request $request, ?Person $person = null): View
-    {
+    public function index(
+        Request $request,
+        ?FamilyTree $tree = null,
+        ?Person $person = null,
+    ): View {
+        $tree ??= app(CurrentTree::class)->get();
+
         return view('family.app', [
-            'familyName' => Setting::value('family_name', 'Наша семья'),
+            'familyName' => $tree?->name ?: Setting::value('family_name', 'Наша семья'),
             'telegramAuthError' => session('telegram_auth_error'),
             'loginError' => session('login_error') ?: session('errors')?->first('login'),
             'initialFocusId' => $person?->id,
             'hasBrowserSession' => $request->session()->has('family_person_id')
-                || $request->session()->has('family_telegram_user_id'),
+                || $request->session()->has('family_telegram_user_id')
+                || $request->session()->has('family_user_id'),
             'familyAppConfig' => [
                 'authError' => session('telegram_auth_error'),
                 'loginError' => session('login_error') ?: session('errors')?->first('login'),
@@ -35,6 +43,10 @@ class MiniAppController extends Controller
                     .'?start=credentials',
                 'focusId' => $person?->id,
                 'openPersonId' => $person?->id,
+                'treeId' => $tree?->id,
+                'treeSlug' => $tree?->slug,
+                'platform' => $request->query('platform', 'web'),
+                'vkAppId' => config('services.vk.app_id'),
             ],
         ]);
     }
@@ -447,6 +459,39 @@ class MiniAppController extends Controller
             ->take(20)
             ->values();
 
-        return response()->json(['birthdays' => $birthdays]);
+        $anniversaries = Partnership::query()
+            ->with(['partnerOne', 'partnerTwo'])
+            ->whereNotNull('started_at')
+            ->get()
+            ->map(function (Partnership $partnership) use ($today): array {
+                $next = Carbon::create(
+                    $today->year,
+                    $partnership->started_at->month,
+                    min(
+                        $partnership->started_at->day,
+                        Carbon::create($today->year, $partnership->started_at->month)->daysInMonth,
+                    ),
+                );
+                if ($next->lt($today)) {
+                    $next->addYear();
+                }
+
+                return [
+                    'id' => (string) $partnership->id,
+                    'title' => $partnership->partnerOne->full_name
+                        .' и '.$partnership->partnerTwo->full_name,
+                    'date' => $next->toDateString(),
+                    'days' => $today->diffInDays($next),
+                    'years' => $partnership->started_at->diffInYears($next),
+                ];
+            })
+            ->sortBy('days')
+            ->take(20)
+            ->values();
+
+        return response()->json([
+            'birthdays' => $birthdays,
+            'anniversaries' => $anniversaries,
+        ]);
     }
 }

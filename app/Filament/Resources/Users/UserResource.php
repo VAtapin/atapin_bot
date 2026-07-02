@@ -18,6 +18,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class UserResource extends Resource
 {
@@ -53,7 +54,15 @@ class UserResource extends Resource
                 Toggle::make('is_active')
                     ->label('Доступ разрешён')
                     ->default(true)
-                    ->required(),
+                    ->required()
+                    ->visible(fn (): bool => (bool) auth()->user()?->is_super_admin),
+                Toggle::make('is_super_admin')
+                    ->label('Суперадминистратор платформы')
+                    ->default(false)
+                    ->visible(fn (): bool => (bool) auth()->user()?->is_super_admin),
+                Toggle::make('two_factor_enabled')
+                    ->label('Двухфакторная защита')
+                    ->default(false),
             ]);
     }
 
@@ -70,6 +79,9 @@ class UserResource extends Resource
                     ->searchable(),
                 IconColumn::make('is_active')
                     ->label('Активен')
+                    ->boolean(),
+                IconColumn::make('is_super_admin')
+                    ->label('Суперадмин')
                     ->boolean(),
                 TextColumn::make('created_at')
                     ->dateTime()
@@ -107,5 +119,29 @@ class UserResource extends Resource
             'create' => CreateUser::route('/create'),
             'edit' => EditUser::route('/{record}/edit'),
         ];
+    }
+
+    public static function canViewAny(): bool
+    {
+        return (bool) auth()->user();
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        return auth()->user()?->is_super_admin
+            ? $query
+            : $query->whereKey(auth()->id());
+    }
+
+    public static function canCreate(): bool
+    {
+        return (bool) auth()->user()?->is_super_admin;
+    }
+
+    public static function canEdit($record): bool
+    {
+        return (bool) (auth()->user()?->is_super_admin || $record->id === auth()->id());
     }
 }

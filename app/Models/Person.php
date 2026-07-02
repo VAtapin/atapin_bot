@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTree;
+use App\Models\Concerns\RecordsChanges;
+use App\Support\CurrentTree;
 use Database\Factories\PersonFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -9,19 +12,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Validation\ValidationException;
 
 class Person extends Model
 {
+    use BelongsToTree;
+
     /** @use HasFactory<PersonFactory> */
     use HasFactory;
 
+    use RecordsChanges;
     use SoftDeletes;
 
     protected $hidden = ['password'];
 
     protected $fillable = [
         'first_name',
+        'tree_id',
         'gedcom_id',
         'login',
         'password',
@@ -60,6 +68,27 @@ class Person extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::creating(function (Person $person): void {
+            $tree = $person->tree_id
+                ? FamilyTree::query()->with('plan')->find($person->tree_id)
+                : app(CurrentTree::class)->resolveDefault();
+            $limit = (int) ($tree?->plan?->people_limit ?? 0);
+
+            if (
+                $limit > 0
+                && static::query()->withoutGlobalScope('family_tree')
+                    ->where('tree_id', $tree->id)
+                    ->count() >= $limit
+            ) {
+                throw ValidationException::withMessages([
+                    'person' => 'Достигнут лимит людей для текущего тарифа.',
+                ]);
+            }
+        });
+    }
+
     public function getFullNameAttribute(): string
     {
         return trim(implode(' ', array_filter([
@@ -88,7 +117,7 @@ class Person extends Model
     public function getPhotoUrlAttribute(): ?string
     {
         if ($this->photo_path) {
-            return Storage::disk('public')->url($this->photo_path);
+            return URL::temporarySignedRoute('media.person', now()->addMinutes(30), ['person' => $this->id]);
         }
 
         return $this->primaryPhoto?->url ?? $this->photos()->first()?->url;

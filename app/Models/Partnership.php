@@ -2,13 +2,19 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTree;
+use App\Models\Concerns\RecordsChanges;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Validation\ValidationException;
 
 class Partnership extends Model
 {
+    use BelongsToTree;
+    use RecordsChanges;
+
     protected $fillable = [
+        'tree_id',
         'partner_one_id',
         'partner_two_id',
         'status',
@@ -44,6 +50,17 @@ class Partnership extends Model
                     $partnership->partner_one_id,
                 ];
             }
+
+            $firstTreeId = Person::query()->whereKey($partnership->partner_one_id)->value('tree_id');
+            $secondTreeId = Person::query()->whereKey($partnership->partner_two_id)->value('tree_id');
+
+            if ($firstTreeId !== $secondTreeId) {
+                throw ValidationException::withMessages([
+                    'partner_two_id' => 'Оба партнёра должны находиться в одном дереве.',
+                ]);
+            }
+
+            $partnership->tree_id = $firstTreeId;
         });
     }
 

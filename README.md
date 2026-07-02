@@ -1,8 +1,10 @@
-# Семейный Telegram-бот
+# «Я и дом мой»
 
-Telegram-бот и Telegram Mini App для большой семьи.
+Приватная платформа семейных деревьев: сайт, Telegram-бот, Telegram Mini App и VK Mini App.
 
-Проект позволяет вести единый семейный архив: генеалогическое древо, карточки родственников, фотографии, памятные даты, дни рождения и семейные события. Управление всеми данными осуществляется через административную панель Filament.
+Подзаголовок: **«Семейная история и память рода»**.
+
+Основные домены: `idommoy.com` и `idommoy.ru`. Каждое дерево имеет собственный адрес вида `/family/atapiny`.
 
 ---
 
@@ -38,6 +40,16 @@ Telegram-бот и Telegram Mini App для большой семьи.
 - ручное подтверждение групп;
 - журнал входящих Telegram Update;
 - административная панель Filament.
+- несколько полностью изолированных семейных деревьев;
+- роли владельца, модератора, члена семьи и гостя;
+- приглашения по ссылке без знания Telegram ID;
+- история изменений, сообщения об ошибках и объединение дублей;
+- квоты фотографий, резервные копии с медиафайлами и восстановление;
+- импорт GEDCOM, Gramps XML и CSV, полный JSON-экспорт;
+- публичная главная, CMS, тарифы и подписки;
+- единые внешние идентификаторы Telegram и VK;
+- двухфакторная защита администраторов;
+- мониторинг диска, ошибок и заброшенных деревьев.
 
 ---
 
@@ -69,7 +81,7 @@ npm install
 
 npm run build
 
-php artisan make:filament-user
+php artisan platform:make-super-admin admin@example.com
 
 php artisan serve
 ```
@@ -145,12 +157,12 @@ cp .env.example .env
 Минимальные настройки:
 
 ```dotenv
-APP_NAME="Семейный архив"
+APP_NAME="Я и дом мой"
 
 APP_ENV=production
 APP_DEBUG=false
 
-APP_URL=https://example.com
+APP_URL=https://idommoy.com
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
@@ -162,13 +174,17 @@ DB_PASSWORD=********
 TELEGRAM_BOT_TOKEN=********
 TELEGRAM_BOT_USERNAME=atapin_bot
 TELEGRAM_WEBHOOK_SECRET=********
-TELEGRAM_MINI_APP_URL=https://example.com/family
+TELEGRAM_MINI_APP_URL=https://idommoy.com/family
 TELEGRAM_ADMIN_IDS=123456789
 
 # BotFather → Bot Settings → Web Login
 TELEGRAM_OIDC_CLIENT_ID=123456789
 TELEGRAM_OIDC_CLIENT_SECRET=********
-TELEGRAM_OIDC_REDIRECT_URI=https://example.com/auth/telegram/callback
+TELEGRAM_OIDC_REDIRECT_URI=https://idommoy.com/auth/telegram/callback
+
+VK_APP_ID=
+VK_APP_SECRET=
+VK_MINI_APP_URL=https://idommoy.com
 ```
 
 ---
@@ -216,13 +232,15 @@ npm run build
 ## 9. Создание администратора
 
 ```bash
-/opt/plesk/php/8.5/bin/php artisan make:filament-user
+/opt/plesk/php/8.5/bin/php artisan platform:make-super-admin admin@example.com
 ```
 
-После этого можно войти в
+Команда создаст безопасный пароль, назначит пользователя суперадминистратором
+и владельцем перенесённого дерева, если у него ещё нет владельца. После этого
+можно войти в
 
 ```
-https://example.com/admin
+https://idommoy.com/admin
 ```
 
 ---

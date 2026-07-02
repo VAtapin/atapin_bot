@@ -2,9 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\TelegramGroup;
 use App\Services\TelegramBot;
+use App\Support\CurrentTree;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -22,6 +24,7 @@ class SendBirthdayNotifications extends Command
             ->where('is_active', true)
             ->where('notify_birthdays', true)
             ->each(function (TelegramGroup $group) use ($bot, &$failed): void {
+                app(CurrentTree::class)->set($group->tree);
                 $now = now($group->timezone);
 
                 if (! $this->option('force')) {
@@ -40,8 +43,13 @@ class SendBirthdayNotifications extends Command
                     ->whereMonth('birth_date', $now->month)
                     ->whereDay('birth_date', $now->day)
                     ->get();
+                $anniversaries = Partnership::query()
+                    ->with(['partnerOne', 'partnerTwo'])
+                    ->whereMonth('started_at', $now->month)
+                    ->whereDay('started_at', $now->day)
+                    ->get();
 
-                if ($people->isEmpty()) {
+                if ($people->isEmpty() && $anniversaries->isEmpty()) {
                     $group->update(['birthday_last_sent_on' => $now->toDateString()]);
 
                     return;
@@ -53,11 +61,21 @@ class SendBirthdayNotifications extends Command
 
                     return '🎉 <b>'.e($person->full_name)."</b>{$ageText}";
                 })->implode("\n");
+                $anniversaryLines = $anniversaries->map(function (Partnership $partnership) use ($now): string {
+                    $years = $partnership->started_at?->diffInYears($now);
+
+                    return '💍 <b>'.e($partnership->partnerOne->full_name)
+                        .' и '.e($partnership->partnerTwo->full_name)."</b> — {$years} лет";
+                })->implode("\n");
+                $sections = collect([
+                    $lines !== '' ? "<b>Сегодня день рождения!</b>\n\n{$lines}\n\nПоздравляем! 🎂" : null,
+                    $anniversaryLines !== '' ? "<b>Сегодня годовщина!</b>\n\n{$anniversaryLines} 💐" : null,
+                ])->filter()->implode("\n\n");
 
                 try {
                     $bot->sendMessage(
                         $group->telegram_chat_id,
-                        "<b>Сегодня день рождения!</b>\n\n{$lines}\n\nПоздравляем! 🎂",
+                        $sections,
                     );
                     $group->update(['birthday_last_sent_on' => $now->toDateString()]);
                     $this->info("Sent to {$group->title}");

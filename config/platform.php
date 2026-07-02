@@ -1,0 +1,12 @@
+<?php
+
+return [
+    'name' => env('PLATFORM_NAME', 'Я и дом мой'),
+    'subtitle' => env('PLATFORM_SUBTITLE', 'Семейная история и память рода'),
+    'domains' => [
+        'international' => env('PLATFORM_DOMAIN_COM', 'idommoy.com'),
+        'russia' => env('PLATFORM_DOMAIN_RU', 'idommoy.ru'),
+    ],
+    'dormant_tree_days' => (int) env('DORMANT_TREE_DAYS', 365),
+    'dormant_warning_days' => (int) env('DORMANT_WARNING_DAYS', 30),
+];

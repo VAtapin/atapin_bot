@@ -4,6 +4,9 @@ namespace App\Providers\Filament;
 
 use App\Filament\Widgets\FamilyStats;
 use App\Filament\Widgets\UpcomingBirthdays;
+use App\Http\Middleware\RequireOwnerTwoFactor;
+use App\Http\Middleware\ResolveAdminTree;
+use App\Support\CurrentTree;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -31,7 +34,8 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->brandName('Семейный архив')
+            ->passwordReset()
+            ->brandName('Я и дом мой')
             ->colors([
                 'primary' => Color::Emerald,
             ])
@@ -49,7 +53,9 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->navigationItems([
                 NavigationItem::make('Открыть семейное древо')
-                    ->url(fn (): string => route('family.app'))
+                    ->url(fn (): string => app(CurrentTree::class)->get()
+                        ? route('family.tree', app(CurrentTree::class)->get())
+                        : route('family.app'))
                     ->icon(Heroicon::OutlinedShare)
                     ->openUrlInNewTab()
                     ->sort(-1),
@@ -59,6 +65,7 @@ class AdminPanelProvider extends PanelProvider
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
                 AuthenticateSession::class,
+                ResolveAdminTree::class,
                 ShareErrorsFromSession::class,
                 PreventRequestForgery::class,
                 SubstituteBindings::class,
@@ -67,6 +74,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                RequireOwnerTwoFactor::class,
             ]);
     }
 }

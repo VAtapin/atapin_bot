@@ -11,3 +11,9 @@ Artisan::command('inspire', function () {
 Schedule::command('telegram:send-birthdays')
     ->hourly()
     ->withoutOverlapping();
+Schedule::command('trees:backup')
+    ->dailyAt('02:30')
+    ->withoutOverlapping();
+Schedule::command('platform:monitor')
+    ->dailyAt('08:00')
+    ->withoutOverlapping();

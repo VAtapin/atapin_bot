@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\People\RelationManagers;
 
+use App\Support\CurrentTree;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -35,7 +36,7 @@ class PhotosRelationManager extends RelationManager
                 ->label('Файл')
                 ->image()
                 ->imageEditor()
-                ->directory('people/gallery')
+                ->directory(fn (): string => 'trees/'.app(CurrentTree::class)->id().'/people/gallery')
                 ->disk('public')
                 ->visibility('public'),
             TextInput::make('source_url')

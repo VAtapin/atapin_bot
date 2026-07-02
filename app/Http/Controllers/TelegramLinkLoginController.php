@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\TelegramLoginToken;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class TelegramLinkLoginController extends Controller
@@ -35,7 +36,12 @@ class TelegramLinkLoginController extends Controller
 
         $request->session()->regenerate();
         $request->session()->put('family_telegram_user_id', $loginToken->telegram_user_id);
+        $request->session()->put('family_user_id', $loginToken->telegramUser->user_id);
+        $request->session()->put('family_tree_id', $loginToken->telegramUser->current_tree_id);
         $request->session()->forget('family_person_id');
+        if ($loginToken->telegramUser->user) {
+            Auth::login($loginToken->telegramUser->user);
+        }
         $loginToken->telegramUser->updateQuietly(['last_web_login_at' => now()]);
 
         return redirect()->route('family.app');

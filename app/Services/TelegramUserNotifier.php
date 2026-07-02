@@ -13,7 +13,7 @@ class TelegramUserNotifier
     {
         $person = $user->person?->full_name ?? 'ещё не привязан';
         $username = $user->username ? '@'.$user->username : 'без username';
-        $text = "👋 <b>Новая заявка в семейный архив</b>\n\n"
+        $text = "👋 <b>Новая заявка в «Я и дом мой»</b>\n\n"
             .'Пользователь: <b>'.e($user->display_name)."</b>\n"
             .'Telegram: '.e($username)."\n"
             .'Telegram ID: <code>'.$user->telegram_user_id."</code>\n"
@@ -39,7 +39,7 @@ class TelegramUserNotifier
 
     public function changed(TelegramUser $user, array $changes): void
     {
-        $lines = ['🔔 <b>Изменения в семейном архиве</b>'];
+        $lines = ['🔔 <b>Изменения в «Я и дом мой»</b>'];
 
         if (array_key_exists('status', $changes)) {
             $lines[] = match ($user->status) {
@@ -71,7 +71,9 @@ class TelegramUserNotifier
                     'inline_keyboard' => [[
                         [
                             'text' => '🌳 Открыть семейный архив',
-                            'web_app' => ['url' => config('services.telegram.mini_app_url')],
+                            'web_app' => ['url' => $user->currentTree
+                                ? route('family.tree', $user->currentTree)
+                                : config('services.telegram.mini_app_url')],
                         ],
                     ]],
                 ],

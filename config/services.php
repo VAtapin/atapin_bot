@@ -54,4 +54,10 @@ return [
         'oidc_jwks_url' => 'https://oauth.telegram.org/.well-known/jwks.json',
     ],
 
+    'vk' => [
+        'app_id' => env('VK_APP_ID'),
+        'app_secret' => env('VK_APP_SECRET'),
+        'mini_app_url' => env('VK_MINI_APP_URL', env('APP_URL').'/family'),
+    ],
+
 ];

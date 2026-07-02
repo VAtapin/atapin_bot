@@ -48,6 +48,7 @@ class TelegramSetWebhook extends Command
                 ['command' => 'birthdays', 'description' => 'Ближайшие дни рождения'],
                 ['command' => 'events', 'description' => 'Ближайшие семейные события'],
                 ['command' => 'stats', 'description' => 'Статистика семейного архива'],
+                ['command' => 'trees', 'description' => 'Выбрать семейное дерево'],
                 ['command' => 'credentials', 'description' => 'Получить логин и новый пароль'],
                 ['command' => 'site', 'description' => 'Войти на семейный сайт'],
                 ['command' => 'help', 'description' => 'Список команд'],

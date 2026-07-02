@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#f6f2e9">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Семейное древо</title>
+    <title>{{ $familyName }} — Я и дом мой</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
         window.familyAppConfig = @json($familyAppConfig);
@@ -19,7 +19,7 @@
                 <span class="brand-mark">🌳</span>
                 <div>
                     <h1>{{ $familyName }}</h1>
-                    <p>люди, истории и важные даты</p>
+                    <p>семейная история и память рода</p>
                 </div>
             </div>
             @if ($hasBrowserSession)
@@ -90,8 +90,9 @@
         </section>
 
         <section id="birthdays-view" class="birthdays" hidden>
-            <p class="birthday-intro">Ближайшие семейные праздники</p>
+            <p class="birthday-intro">Ближайшие дни рождения и годовщины</p>
             <div id="birthday-list" class="birthday-list"></div>
+            <div id="anniversary-list" class="birthday-list"></div>
         </section>
 
         <section id="gallery-view" class="gallery-view" hidden>
@@ -108,6 +109,20 @@
         <span id="error-message"></span>
         <div id="error-actions" class="error-actions"></div>
     </div>
+
+    <button id="report-issue-button" class="report-issue-button" type="button">Сообщить об ошибке</button>
+    <aside id="report-issue-modal" class="report-issue-modal" hidden>
+        <form id="report-issue-form" class="report-issue-card">
+            <button class="icon-button report-issue-close" type="button" aria-label="Закрыть">×</button>
+            <h2>Сообщить об ошибке</h2>
+            <p>Опишите, что нужно проверить или исправить.</p>
+            <input name="subject" placeholder="Кратко: в чём ошибка" required maxlength="180">
+            <textarea name="description" placeholder="Подробности" required maxlength="5000"></textarea>
+            <input name="person_id" type="hidden">
+            <button type="submit">Отправить владельцу дерева</button>
+            <small id="report-issue-message"></small>
+        </form>
+    </aside>
 
     <aside id="auth-panel" class="auth-panel" hidden>
         <section class="auth-card">

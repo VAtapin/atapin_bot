@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FamilyTree;
 use App\Models\TelegramUser;
+use App\Services\ExternalIdentityService;
+use App\Services\TreeAccessService;
 use Firebase\JWT\JWK;
 use Firebase\JWT\JWT;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -117,15 +121,51 @@ class TelegramLoginController extends Controller
         }
 
         $user->save();
+        $tree = FamilyTree::query()->find($request->session()->get('family_tree_id'))
+            ?: FamilyTree::query()->where('status', 'active')->oldest('id')->first();
+        $familyUser = app(ExternalIdentityService::class)->resolve('telegram', $telegramId, [
+            'username' => $user->username,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'photo_url' => $user->photo_url,
+        ]);
+        $user->updateQuietly([
+            'user_id' => $familyUser->id,
+            'current_tree_id' => $tree?->id,
+        ]);
+        if ($request->session()->has('family_invitation_token')) {
+            $membership = app(TreeAccessService::class)->acceptInvitation(
+                $familyUser,
+                (string) $request->session()->pull('family_invitation_token'),
+            );
+            $tree = $membership->tree;
+        } else {
+            $membership = app(TreeAccessService::class)->membership($familyUser, $tree);
+            if ($user->isApproved() && $membership->status === 'pending') {
+                $membership->update([
+                    'status' => 'approved',
+                    'role' => $user->is_bot_admin ? 'moderator' : 'guest',
+                    'approved_at' => now(),
+                ]);
+            }
+        }
         $request->session()->regenerate();
         $request->session()->put('family_telegram_user_id', $user->id);
+        $request->session()->put('family_user_id', $familyUser->id);
+        $request->session()->put('family_tree_id', $tree?->id);
+        Auth::login($familyUser);
 
         return redirect()->route('family.app');
     }
 
     public function logout(Request $request): RedirectResponse
     {
-        $request->session()->forget('family_telegram_user_id');
+        Auth::logout();
+        $request->session()->forget([
+            'family_telegram_user_id',
+            'family_user_id',
+            'family_tree_id',
+        ]);
         $request->session()->regenerateToken();
 
         return redirect()->route('family.app');

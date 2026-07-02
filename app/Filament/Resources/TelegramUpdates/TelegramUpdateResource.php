@@ -124,4 +124,9 @@ class TelegramUpdateResource extends Resource
             'edit' => EditTelegramUpdate::route('/{record}/edit'),
         ];
     }
+
+    public static function canViewAny(): bool
+    {
+        return (bool) auth()->user()?->is_super_admin;
+    }
 }

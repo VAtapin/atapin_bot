@@ -2,12 +2,18 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTree;
+use App\Models\Concerns\RecordsChanges;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FamilyEvent extends Model
 {
+    use BelongsToTree;
+    use RecordsChanges;
+
     protected $fillable = [
+        'tree_id',
         'person_id',
         'type',
         'title',

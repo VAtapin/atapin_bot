@@ -2,10 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Models\FamilyTree;
 use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
+use App\Support\CurrentTree;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -21,6 +23,7 @@ class ImportGedcom extends Command
         {file : Path to a GEDCOM file}
         {--fresh : Replace all people and family links}
         {--photos : Download all GEDCOM photos}
+        {--tree= : Family tree ID or slug}
         {--dry-run : Parse and report without changing the database}';
 
     protected $description = 'Import people, families, places and all raw facts from GEDCOM';
@@ -47,6 +50,14 @@ class ImportGedcom extends Command
 
     public function handle(): int
     {
+        $tree = $this->option('tree')
+            ? FamilyTree::query()
+                ->whereKey($this->option('tree'))
+                ->orWhere('slug', $this->option('tree'))
+                ->firstOrFail()
+            : app(CurrentTree::class)->resolveDefault();
+        app(CurrentTree::class)->set($tree);
+
         $file = $this->resolveFile((string) $this->argument('file'));
 
         if (! is_file($file)) {
@@ -477,13 +488,14 @@ class ImportGedcom extends Command
         Schema::disableForeignKeyConstraints();
 
         try {
-            DB::table('family_events')->delete();
-            DB::table('person_photos')->delete();
-            DB::table('photo_albums')->delete();
-            DB::table('parent_children')->delete();
-            DB::table('partnerships')->delete();
-            DB::table('telegram_users')->update(['person_id' => null]);
-            DB::table('people')->delete();
+            $treeId = app(CurrentTree::class)->id();
+            DB::table('family_events')->where('tree_id', $treeId)->delete();
+            DB::table('person_photos')->where('tree_id', $treeId)->delete();
+            DB::table('photo_albums')->where('tree_id', $treeId)->delete();
+            DB::table('parent_children')->where('tree_id', $treeId)->delete();
+            DB::table('partnerships')->where('tree_id', $treeId)->delete();
+            DB::table('telegram_users')->where('current_tree_id', $treeId)->update(['person_id' => null]);
+            DB::table('people')->where('tree_id', $treeId)->delete();
         } finally {
             Schema::enableForeignKeyConstraints();
         }
@@ -687,7 +699,7 @@ class ImportGedcom extends Command
             }
 
             $extension = $this->imageExtension($response->header('Content-Type'), $url);
-            $path = 'people/photos/'
+            $path = 'trees/'.app(CurrentTree::class)->id().'/people/photos/'
                 .Str::slug($gedcomId).'-'
                 .str_pad((string) $index, 3, '0', STR_PAD_LEFT)
                 .'.'.$extension;
@@ -711,7 +723,9 @@ class ImportGedcom extends Command
         }
 
         $prefix = Str::slug($gedcomId).'-'.str_pad((string) $index, 3, '0', STR_PAD_LEFT);
-        $this->existingPhotoFiles ??= collect(Storage::disk('public')->files('people/photos'))
+        $this->existingPhotoFiles ??= collect(Storage::disk('public')->files(
+            'trees/'.app(CurrentTree::class)->id().'/people/photos',
+        ))
             ->mapWithKeys(fn (string $path): array => [pathinfo($path, PATHINFO_FILENAME) => $path])
             ->all();
         $file = $this->existingPhotoFiles[$prefix] ?? null;

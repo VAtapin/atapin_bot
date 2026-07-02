@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\FamilyTree;
 use App\Models\Person;
+use App\Models\Plan;
 use App\Models\TelegramGroup;
 use App\Models\TelegramUpdate;
 use App\Models\TelegramUser;
+use App\Models\TreeMembership;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -97,6 +101,8 @@ class TelegramWebhookTest extends TestCase
             'tab' => 'list',
             'q' => 'Анатолий',
             'scope' => 'all',
+            'tree_id' => FamilyTree::query()->first()->id,
+            'tree_name' => FamilyTree::query()->first()->name,
         ], $user->fresh()->mini_app_action);
 
         $requests = Http::recorded();
@@ -105,7 +111,10 @@ class TelegramWebhookTest extends TestCase
             $requests[0][0]->data()['text'],
         );
         $this->assertSame(
-            route('family.person', Person::query()->first()->id),
+            route('family.tree.person', [
+                'tree' => FamilyTree::query()->first(),
+                'person' => Person::query()->first()->id,
+            ]),
             $requests[1][0]->data()['reply_markup']['inline_keyboard'][0][0]['web_app']['url'],
         );
     }
@@ -121,7 +130,11 @@ class TelegramWebhookTest extends TestCase
         $this->sendPrivateMessage(2101, '/photos');
 
         $this->assertSame(
-            ['tab' => 'gallery'],
+            [
+                'tab' => 'gallery',
+                'tree_id' => FamilyTree::query()->first()->id,
+                'tree_name' => FamilyTree::query()->first()->name,
+            ],
             $user->fresh()->mini_app_action,
         );
     }
@@ -192,7 +205,7 @@ class TelegramWebhookTest extends TestCase
         $request = Http::recorded()->last()[0];
         $url = $request->data()['reply_markup']['inline_keyboard'][0][0]['url'];
         $this->assertSame(
-            'https://t.me/atapin_bot?startapp=person_'.$person->id,
+            'https://t.me/atapin_bot?startapp=tree_1_person_'.$person->id,
             $url,
         );
     }
@@ -221,6 +234,50 @@ class TelegramWebhookTest extends TestCase
             Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/answerCallbackQuery')
                 && $request->data()['callback_query_id'] === 'callback-'.$callbackId);
         }
+    }
+
+    public function test_user_can_switch_between_approved_trees_from_bot(): void
+    {
+        $user = User::factory()->create();
+        $defaultTree = FamilyTree::query()->firstOrFail();
+        $secondTree = FamilyTree::query()->create([
+            'name' => 'Второе дерево',
+            'slug' => 'second-tree',
+            'status' => 'active',
+            'plan_id' => Plan::query()->first()->id,
+        ]);
+        TreeMembership::query()->create([
+            'tree_id' => $defaultTree->id,
+            'user_id' => $user->id,
+            'role' => 'member',
+            'status' => 'approved',
+        ]);
+        TreeMembership::query()->create([
+            'tree_id' => $secondTree->id,
+            'user_id' => $user->id,
+            'role' => 'guest',
+            'status' => 'approved',
+        ]);
+        $telegramUser = TelegramUser::query()->create([
+            'user_id' => $user->id,
+            'current_tree_id' => $defaultTree->id,
+            'telegram_user_id' => 321,
+            'status' => 'approved',
+        ]);
+
+        $this->withHeader('X-Telegram-Bot-Api-Secret-Token', 'test-secret')
+            ->postJson('/api/telegram/webhook', [
+                'update_id' => 4001,
+                'callback_query' => [
+                    'id' => 'tree-callback',
+                    'from' => ['id' => 321, 'first_name' => 'Иван'],
+                    'data' => 'tree:select:'.$secondTree->id,
+                ],
+            ])
+            ->assertOk();
+
+        $this->assertSame($secondTree->id, $telegramUser->fresh()->current_tree_id);
+        $this->assertSame($secondTree->id, $telegramUser->fresh()->mini_app_action['tree_id']);
     }
 
     private function sendAccessCallback(int $updateId, string $action, TelegramUser $target): void

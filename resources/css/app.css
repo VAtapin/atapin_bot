@@ -344,6 +344,58 @@ button { cursor: pointer; }
     padding: 18px;
     background: rgb(15 13 10 / 88%);
 }
+.report-issue-button {
+    position: fixed;
+    z-index: 11;
+    left: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    padding: 8px 11px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    color: var(--muted);
+    font-size: 12px;
+}
+.report-issue-modal {
+    position: fixed;
+    z-index: 70;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgb(20 18 15 / 45%);
+}
+.report-issue-card {
+    position: relative;
+    display: grid;
+    gap: 11px;
+    width: min(100%, 470px);
+    padding: 24px;
+    border-radius: 18px;
+    background: var(--surface);
+    box-shadow: 0 18px 60px rgb(0 0 0 / 25%);
+}
+.report-issue-card h2,
+.report-issue-card p { margin: 0; }
+.report-issue-card input,
+.report-issue-card textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--bg);
+    color: var(--text);
+}
+.report-issue-card textarea { min-height: 130px; resize: vertical; }
+.report-issue-card > button[type="submit"] {
+    border: 0;
+    border-radius: 9px;
+    padding: 11px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-weight: 700;
+}
+.report-issue-close { position: absolute; top: 10px; right: 10px; }
 .photo-viewer-card {
     position: relative;
     display: flex;

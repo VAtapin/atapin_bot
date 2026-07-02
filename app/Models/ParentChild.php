@@ -2,13 +2,18 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTree;
+use App\Models\Concerns\RecordsChanges;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Validation\ValidationException;
 
 class ParentChild extends Model
 {
-    protected $fillable = ['parent_id', 'child_id', 'type', 'notes'];
+    use BelongsToTree;
+    use RecordsChanges;
+
+    protected $fillable = ['tree_id', 'parent_id', 'child_id', 'type', 'notes'];
 
     protected static function booted(): void
     {
@@ -18,6 +23,17 @@ class ParentChild extends Model
                     'child_id' => 'Человек не может быть родителем самому себе.',
                 ]);
             }
+
+            $parentTreeId = Person::query()->whereKey($link->parent_id)->value('tree_id');
+            $childTreeId = Person::query()->whereKey($link->child_id)->value('tree_id');
+
+            if ($parentTreeId !== $childTreeId) {
+                throw ValidationException::withMessages([
+                    'child_id' => 'Родитель и ребёнок должны находиться в одном дереве.',
+                ]);
+            }
+
+            $link->tree_id = $parentTreeId;
         });
     }
 

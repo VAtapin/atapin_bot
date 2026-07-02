@@ -8,6 +8,7 @@ class TelegramUpdate extends Model
 {
     protected $fillable = [
         'telegram_update_id',
+        'tree_id',
         'chat_id',
         'telegram_user_id',
         'update_type',

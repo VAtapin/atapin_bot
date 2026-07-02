@@ -2,13 +2,19 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTree;
+use App\Models\Concerns\RecordsChanges;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 
 class PersonPhoto extends Model
 {
+    use BelongsToTree;
+    use RecordsChanges;
+
     protected $fillable = [
+        'tree_id',
         'person_id',
         'photo_album_id',
         'uploaded_by_telegram_user_id',
@@ -21,6 +27,7 @@ class PersonPhoto extends Model
         'is_primary',
         'sort_order',
         'gedcom_data',
+        'file_size',
     ];
 
     protected function casts(): array
@@ -62,7 +69,7 @@ class PersonPhoto extends Model
     public function getUrlAttribute(): ?string
     {
         return $this->path
-            ? Storage::disk('public')->url($this->path)
+            ? URL::temporarySignedRoute('media.photo', now()->addMinutes(30), ['photo' => $this->id])
             : $this->source_url;
     }
 }

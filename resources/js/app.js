@@ -1,11 +1,15 @@
 import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
+import bridge from '@vkontakte/vk-bridge';
 import '../css/app.css';
 
 cytoscape.use(dagre);
 
 const telegram = window.Telegram?.WebApp;
 const initialParams = new URLSearchParams(window.location.search);
+const vkLaunchParams = initialParams.has('vk_user_id') && initialParams.has('sign')
+    ? initialParams.toString()
+    : '';
 const startAction = parseMiniAppStartParameter(
     telegram?.initDataUnsafe?.start_param
     ?? initialParams.get('tgWebAppStartParam'),
@@ -26,6 +30,8 @@ const state = {
     pendingOpenPersonId: startAction?.openPerson
         ?? window.familyAppConfig?.openPersonId
         ?? null,
+    treeId: startAction?.treeId ?? window.familyAppConfig?.treeId ?? null,
+    treeSlug: window.familyAppConfig?.treeSlug ?? null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -39,28 +45,38 @@ const escapeHtml = (value = '') => String(value)
 function parseMiniAppStartParameter(value) {
     if (!value) return null;
 
-    let match = String(value).match(/^person_(\d+)$/);
+    let treeId = null;
+    let normalized = String(value);
+    const treeMatch = normalized.match(/^tree_(\d+)_(.+)$/);
+    if (treeMatch) {
+        treeId = treeMatch[1];
+        normalized = treeMatch[2];
+    }
+
+    let match = normalized.match(/^person_(\d+)$/);
     if (match) {
         return {
             tab: 'tree',
             focus: match[1],
             openPerson: match[1],
             scope: 'branch',
+            treeId,
         };
     }
 
-    match = String(value).match(/^list_(grandchildren|nephews)_(\d+)$/);
+    match = normalized.match(/^list_(grandchildren|nephews)_(\d+)$/);
     if (match) {
         return {
             tab: 'list',
             relation: match[1],
             focus: match[2],
             scope: 'branch',
+            treeId,
         };
     }
 
-    match = String(value).match(/^tab_(tree|list|gallery|birthdays|me)$/);
-    return match ? { tab: match[1] } : null;
+    match = normalized.match(/^tab_(tree|list|gallery|birthdays|me)$/);
+    return match ? { tab: match[1], treeId } : null;
 }
 
 try {
@@ -71,11 +87,20 @@ try {
     // The official script exposes a limited object outside the Telegram client.
 }
 
+if (vkLaunchParams || window.familyAppConfig?.platform === 'vk') {
+    bridge.send('VKWebAppInit').catch(() => {
+        // В обычном браузере VK Bridge ожидаемо недоступен.
+    });
+}
+
 async function api(path, options = {}) {
     const body = options.body;
     const headers = {
         Accept: 'application/json',
         'X-Telegram-Init-Data': telegram?.initData ?? '',
+        'X-VK-Launch-Params': vkLaunchParams,
+        'X-Family-Tree-ID': state.treeId ?? '',
+        'X-Family-Tree': state.treeSlug ?? '',
         'X-CSRF-TOKEN': $('meta[name="csrf-token"]')?.content ?? '',
         ...(options.headers ?? {}),
     };
@@ -582,6 +607,18 @@ async function loadBirthdays() {
                 </article>
             `).join('')
             : '<p class="empty-list">Дни рождения пока не добавлены.</p>';
+        $('#anniversary-list').innerHTML = data.anniversaries?.length
+            ? `<h3>Годовщины</h3>${data.anniversaries.map((item) => `
+                <article class="birthday-card anniversary-card">
+                    <span class="birthday-avatar">💍</span>
+                    <div>
+                        <strong>${escapeHtml(item.title)}</strong>
+                        <span>${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))} · ${item.years} лет</span>
+                    </div>
+                    <em>${item.days === 0 ? 'сегодня' : `через ${item.days} дн.`}</em>
+                </article>
+            `).join('')}`
+            : '';
     } catch (error) {
         showError(error.message, error.payload);
     } finally {
@@ -684,9 +721,12 @@ function renderMe(data) {
     const relatives = [
         ...data.relatives.spouses.map((item) => ({ ...item, kind: 'Супруг / супруга' })),
         ...data.relatives.children.map((item) => ({ ...item, kind: 'Ребёнок' })),
+        ...data.relatives.grandchildren.map((item) => ({ ...item, kind: 'Внук / внучка' })),
+        ...data.relatives.child_spouses.map((item) => ({ ...item, kind: 'Зять / невестка' })),
     ];
 
     $('#me-content').innerHTML = `
+        ${data.can_edit ? '' : '<div class="manage-card readonly-notice">У вас гостевой доступ. Данные доступны только для просмотра.</div>'}
         <section class="manage-card">
             <div class="manage-heading">
                 ${person.photo_url ? `<img src="${escapeHtml(person.photo_url)}" alt="">` : '<span>👤</span>'}
@@ -699,7 +739,7 @@ function renderMe(data) {
         </section>
 
         <section class="manage-card">
-            <h2>Супруги и дети</h2>
+            <h2>Моя семейная ветвь</h2>
             <div class="relative-editor-list">
                 ${relatives.length ? relatives.map((relative) => `
                     <details data-relative="${relative.id}">
@@ -718,11 +758,17 @@ function renderMe(data) {
                 `).join('') : '<p class="empty-list">Пока никого не добавлено.</p>'}
             </div>
             <details class="add-box">
-                <summary>＋ Добавить супруга или ребёнка</summary>
+                <summary>＋ Добавить родственника</summary>
                 <form id="relative-add-form" class="manage-form">
                     <label><span>Кого добавляем</span><select name="kind">
                         <option value="spouse">Супруга / супругу</option>
                         <option value="child">Ребёнка</option>
+                        <option value="grandchild">Внука / внучку</option>
+                        <option value="child_spouse">Зятя / невестку</option>
+                    </select></label>
+                    <label><span>Через кого из детей (для внука, зятя или невестки)</span><select name="related_person_id">
+                        <option value="">Не требуется</option>
+                        ${data.relatives.children.map((child) => `<option value="${child.id}">${escapeHtml(child.name)}</option>`).join('')}
                     </select></label>
                     ${personEditFields({ gender: 'unknown' })}
                     <button type="submit">Добавить в дерево</button>
@@ -776,8 +822,30 @@ function renderMe(data) {
                 <button class="danger" type="submit">Удалить мою карточку</button>
             </form>
         </details>
+        <details class="manage-card privacy-zone">
+            <summary>Мои персональные данные</summary>
+            <p>Можно скачать все данные своей учётной записи или полностью удалить аккаунт.</p>
+            <div class="form-actions">
+                <button id="privacy-export" type="button">Скачать мои данные</button>
+            </div>
+            <form id="delete-account-form" class="inline-form">
+                <input name="confirmation" placeholder="УДАЛИТЬ АККАУНТ" required>
+                <button class="danger" type="submit">Удалить аккаунт</button>
+            </form>
+        </details>
         <p id="manage-message" class="manage-message"></p>
     `;
+
+    if (!data.can_edit) {
+        $('#me-content').querySelectorAll(
+            '#profile-form input, #profile-form textarea, #profile-form select, #profile-form button, '
+            + '.relative-form input, .relative-form textarea, .relative-form select, .relative-form button, '
+            + '#relative-add-form, #album-form, #photo-form, .danger-zone',
+        ).forEach((element) => {
+            if (element.matches('form, details')) element.hidden = true;
+            else element.disabled = true;
+        });
+    }
 
     bindManageActions();
 }
@@ -803,6 +871,31 @@ async function loadMe() {
 }
 
 function bindManageActions() {
+    $('#privacy-export')?.addEventListener('click', async () => {
+        try {
+            const data = await api('/api/family/privacy-export');
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'my-idommoy-data.json';
+            link.click();
+            URL.revokeObjectURL(link.href);
+        } catch (error) {
+            manageMessage(error.message, true);
+        }
+    });
+    $('#delete-account-form')?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        try {
+            await api('/api/family/account', {
+                method: 'DELETE',
+                body: formObject(event.currentTarget),
+            });
+            window.location.href = '/';
+        } catch (error) {
+            manageMessage(error.message, true);
+        }
+    });
     $('#profile-form')?.addEventListener('submit', async (event) => {
         event.preventDefault();
         try {
@@ -955,6 +1048,10 @@ async function syncMiniAppNavigation() {
 
         $('#filters [name="relation"]').value = action.relation ?? '';
         state.scope = action.scope ?? 'branch';
+        state.treeId = action.tree_id ? String(action.tree_id) : state.treeId;
+        if (action.tree_name) {
+            document.querySelector('.brand h1').textContent = action.tree_name;
+        }
         state.focusId = action.focus ? String(action.focus) : null;
         state.pendingOpenPersonId = action.open_person
             ? String(action.open_person)
@@ -1005,6 +1102,32 @@ $('#person-sheet').addEventListener('click', (event) => {
 $('#close-photo-viewer').addEventListener('click', () => { $('#photo-viewer').hidden = true; });
 $('#photo-viewer').addEventListener('click', (event) => {
     if (event.target.id === 'photo-viewer') event.currentTarget.hidden = true;
+});
+$('#report-issue-button').addEventListener('click', () => {
+    $('#report-issue-modal').hidden = false;
+});
+document.querySelector('.report-issue-close').addEventListener('click', () => {
+    $('#report-issue-modal').hidden = true;
+});
+$('#report-issue-modal').addEventListener('click', (event) => {
+    if (event.target.id === 'report-issue-modal') event.currentTarget.hidden = true;
+});
+$('#report-issue-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const message = $('#report-issue-message');
+    message.textContent = 'Отправляем…';
+
+    try {
+        const result = await api('/api/family/issues', {
+            method: 'POST',
+            body: formObject(event.currentTarget),
+        });
+        message.textContent = result.message;
+        event.currentTarget.reset();
+        window.setTimeout(() => { $('#report-issue-modal').hidden = true; }, 1300);
+    } catch (error) {
+        message.textContent = error.message;
+    }
 });
 document.querySelectorAll('[data-tab]').forEach((button) => {
     button.addEventListener('click', () => switchTab(button.dataset.tab));

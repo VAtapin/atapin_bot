@@ -7,6 +7,7 @@ use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
 use App\Models\PhotoAlbum;
+use App\Services\TreeStorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,8 +19,25 @@ class FamilySelfServiceController extends Controller
     public function show(Request $request): JsonResponse
     {
         $person = $this->person($request);
+        $children = $person->children()->get();
+        $childIds = $children->pluck('id');
+        $grandchildren = Person::query()
+            ->whereHas('parents', fn ($query) => $query->whereIn('people.id', $childIds))
+            ->get();
+        $childSpouses = Person::query()
+            ->whereIn('id', Partnership::query()
+                ->where(fn ($query) => $query
+                    ->whereIn('partner_one_id', $childIds)
+                    ->orWhereIn('partner_two_id', $childIds))
+                ->get()
+                ->flatMap(fn (Partnership $link): array => [$link->partner_one_id, $link->partner_two_id])
+                ->reject(fn (int $id): bool => $childIds->contains($id))
+                ->unique())
+            ->get();
 
         return response()->json([
+            'can_edit' => ! $request->attributes->get('treeMembership')
+                || $request->attributes->get('treeMembership')->canEditFamily(),
             'person' => $this->personPayload($person),
             'albums' => $person->albums()->withCount('photos')->get(),
             'photos' => $person->photos()->with('album')->get()->map(fn (PersonPhoto $photo): array => [
@@ -33,14 +51,16 @@ class FamilySelfServiceController extends Controller
             ]),
             'relatives' => [
                 'spouses' => $this->spouses($person)->map(fn (Person $relative) => $this->personPayload($relative)),
-                'children' => $person->children()->get()->map(fn (Person $relative) => $this->personPayload($relative)),
+                'children' => $children->map(fn (Person $relative) => $this->personPayload($relative)),
+                'grandchildren' => $grandchildren->map(fn (Person $relative) => $this->personPayload($relative)),
+                'child_spouses' => $childSpouses->map(fn (Person $relative) => $this->personPayload($relative)),
             ],
         ]);
     }
 
     public function update(Request $request): JsonResponse
     {
-        $person = $this->person($request);
+        $person = $this->editablePerson($request);
         $data = $request->validate($this->personRules(false));
         $person->update($data);
 
@@ -53,10 +73,11 @@ class FamilySelfServiceController extends Controller
     public function destroy(Request $request): JsonResponse
     {
         $request->validate(['confirmation' => ['required', Rule::in(['УДАЛИТЬ'])]]);
-        $person = $this->person($request);
+        $person = $this->editablePerson($request);
 
         DB::transaction(function () use ($person): void {
             $person->telegramUsers()->update(['person_id' => null]);
+            DB::table('tree_memberships')->where('person_id', $person->id)->update(['person_id' => null]);
             $person->delete();
         });
 
@@ -67,37 +88,52 @@ class FamilySelfServiceController extends Controller
 
     public function storeRelative(Request $request): JsonResponse
     {
-        $owner = $this->person($request);
+        $owner = $this->editablePerson($request);
         $base = $request->validate([
-            'kind' => ['required', Rule::in(['spouse', 'child'])],
+            'kind' => ['required', Rule::in(['spouse', 'child', 'grandchild', 'child_spouse'])],
             'person_id' => ['nullable', 'integer', 'exists:people,id', Rule::notIn([$owner->id])],
+            'related_person_id' => ['nullable', 'integer', 'exists:people,id'],
         ]);
+        if (in_array($base['kind'], ['grandchild', 'child_spouse'], true)) {
+            abort_unless(
+                isset($base['related_person_id'])
+                && $owner->children()->whereKey($base['related_person_id'])->exists(),
+                403,
+            );
+        }
         $relative = isset($base['person_id'])
             ? Person::query()->findOrFail($base['person_id'])
             : Person::query()->create($request->validate($this->personRules(true)));
 
-        if ($base['kind'] === 'spouse') {
+        if (in_array($base['kind'], ['spouse', 'child_spouse'], true)) {
+            $partnerId = $base['kind'] === 'spouse' ? $owner->id : $base['related_person_id'];
             Partnership::query()->firstOrCreate([
-                'partner_one_id' => min($owner->id, $relative->id),
-                'partner_two_id' => max($owner->id, $relative->id),
+                'partner_one_id' => min($partnerId, $relative->id),
+                'partner_two_id' => max($partnerId, $relative->id),
             ], ['status' => 'married']);
         } else {
+            $parentId = $base['kind'] === 'child' ? $owner->id : $base['related_person_id'];
             ParentChild::query()->firstOrCreate([
-                'parent_id' => $owner->id,
+                'parent_id' => $parentId,
                 'child_id' => $relative->id,
             ], ['type' => 'biological']);
         }
 
         return response()->json([
-            'message' => $base['kind'] === 'spouse' ? 'Супруг добавлен.' : 'Ребёнок добавлен.',
+            'message' => match ($base['kind']) {
+                'spouse' => 'Супруг добавлен.',
+                'child' => 'Ребёнок добавлен.',
+                'grandchild' => 'Внук или внучка добавлены.',
+                'child_spouse' => 'Зять или невестка добавлены.',
+            },
             'person' => $this->personPayload($relative),
         ], 201);
     }
 
     public function updateRelative(Request $request, Person $person): JsonResponse
     {
-        $owner = $this->person($request);
-        abort_unless($this->isDirectRelative($owner, $person), 403);
+        $owner = $this->editablePerson($request);
+        abort_unless($this->isEditableRelative($owner, $person), 403);
         $person->update($request->validate($this->personRules(false)));
 
         return response()->json([
@@ -108,8 +144,8 @@ class FamilySelfServiceController extends Controller
 
     public function destroyRelative(Request $request, Person $person): JsonResponse
     {
-        $owner = $this->person($request);
-        abort_unless($this->isDirectRelative($owner, $person), 403);
+        $owner = $this->editablePerson($request);
+        abort_unless($this->isEditableRelative($owner, $person), 403);
 
         ParentChild::query()
             ->where(fn ($query) => $query
@@ -121,13 +157,27 @@ class FamilySelfServiceController extends Controller
                 ->where('partner_one_id', min($owner->id, $person->id))
                 ->where('partner_two_id', max($owner->id, $person->id)))
             ->delete();
+        $childIds = $owner->children()->pluck('people.id');
+        ParentChild::query()
+            ->whereIn('parent_id', $childIds)
+            ->where('child_id', $person->id)
+            ->delete();
+        Partnership::query()
+            ->where(fn ($query) => $query
+                ->where(fn ($query) => $query
+                    ->whereIn('partner_one_id', $childIds)
+                    ->where('partner_two_id', $person->id))
+                ->orWhere(fn ($query) => $query
+                    ->whereIn('partner_two_id', $childIds)
+                    ->where('partner_one_id', $person->id)))
+            ->delete();
 
         return response()->json(['message' => 'Связь с родственником удалена.']);
     }
 
     public function storeAlbum(Request $request): JsonResponse
     {
-        $person = $this->person($request);
+        $person = $this->editablePerson($request);
         $album = $person->albums()->create([
             ...$request->validate([
                 'title' => ['required', 'string', 'max:255'],
@@ -141,7 +191,7 @@ class FamilySelfServiceController extends Controller
 
     public function updateAlbum(Request $request, PhotoAlbum $album): JsonResponse
     {
-        $person = $this->person($request);
+        $person = $this->editablePerson($request);
         abort_unless($album->person_id === $person->id, 403);
         $album->update($request->validate([
             'title' => ['required', 'string', 'max:255'],
@@ -153,7 +203,7 @@ class FamilySelfServiceController extends Controller
 
     public function destroyAlbum(Request $request, PhotoAlbum $album): JsonResponse
     {
-        $person = $this->person($request);
+        $person = $this->editablePerson($request);
         abort_unless($album->person_id === $person->id, 403);
         $album->delete();
 
@@ -162,7 +212,7 @@ class FamilySelfServiceController extends Controller
 
     public function storePhoto(Request $request): JsonResponse
     {
-        $owner = $this->person($request);
+        $owner = $this->editablePerson($request);
         $data = $request->validate([
             'photo' => ['required', 'image', 'max:15360'],
             'person_id' => ['nullable', 'integer', 'exists:people,id'],
@@ -175,7 +225,7 @@ class FamilySelfServiceController extends Controller
         $target = isset($data['person_id'])
             ? Person::query()->findOrFail($data['person_id'])
             : $owner;
-        abort_unless($target->is($owner) || $this->isDirectRelative($owner, $target), 403);
+        abort_unless($target->is($owner) || $this->isEditableRelative($owner, $target), 403);
 
         if (! empty($data['photo_album_id'])) {
             abort_unless(
@@ -187,7 +237,10 @@ class FamilySelfServiceController extends Controller
             );
         }
 
-        $path = $request->file('photo')->store('people/gallery', 'public');
+        $tree = $request->attributes->get('familyTree');
+        $fileSize = (int) $request->file('photo')->getSize();
+        app(TreeStorageService::class)->ensureCanStore($tree, $fileSize);
+        $path = $request->file('photo')->store("trees/{$tree->id}/people/gallery", 'public');
         $isPrimary = $request->boolean('is_primary') || ! $target->photos()->exists();
 
         if ($isPrimary) {
@@ -202,7 +255,9 @@ class FamilySelfServiceController extends Controller
             'description' => $data['description'] ?? null,
             'taken_at' => $data['taken_at'] ?? null,
             'is_primary' => $isPrimary,
+            'file_size' => $fileSize,
         ]);
+        app(TreeStorageService::class)->recalculate($tree);
 
         return response()->json([
             'message' => 'Фотография загружена.',
@@ -212,9 +267,9 @@ class FamilySelfServiceController extends Controller
 
     public function destroyPhoto(Request $request, PersonPhoto $photo): JsonResponse
     {
-        $owner = $this->person($request);
+        $owner = $this->editablePerson($request);
         $target = $photo->person;
-        abort_unless($target->is($owner) || $this->isDirectRelative($owner, $target), 403);
+        abort_unless($target->is($owner) || $this->isEditableRelative($owner, $target), 403);
 
         if ($photo->path) {
             Storage::disk('public')->delete($photo->path);
@@ -222,6 +277,7 @@ class FamilySelfServiceController extends Controller
 
         $wasPrimary = $photo->is_primary;
         $photo->delete();
+        app(TreeStorageService::class)->recalculate($request->attributes->get('familyTree'));
 
         if ($wasPrimary) {
             $target->photos()->first()?->update(['is_primary' => true]);
@@ -233,11 +289,22 @@ class FamilySelfServiceController extends Controller
     private function person(Request $request): Person
     {
         $person = $request->attributes->get('familyPerson')
+            ?: $request->attributes->get('treeMembership')?->person
             ?: $request->attributes->get('telegramUser')?->person;
 
         abort_unless($person, 403, 'Администратор должен сначала привязать ваш Telegram к человеку в древе.');
 
         return $person;
+    }
+
+    private function editablePerson(Request $request): Person
+    {
+        $membership = $request->attributes->get('treeMembership');
+        if ($membership) {
+            abort_unless($membership->canEditFamily(), 403, 'У вас есть доступ только для просмотра.');
+        }
+
+        return $this->person($request);
     }
 
     private function personRules(bool $creating): array
@@ -305,6 +372,29 @@ class FamilySelfServiceController extends Controller
             || Partnership::query()
                 ->where('partner_one_id', min($owner->id, $relative->id))
                 ->where('partner_two_id', max($owner->id, $relative->id))
+                ->exists();
+    }
+
+    private function isEditableRelative(Person $owner, Person $relative): bool
+    {
+        if ($this->isDirectRelative($owner, $relative)) {
+            return true;
+        }
+
+        $childIds = $owner->children()->pluck('people.id');
+
+        return ParentChild::query()
+            ->whereIn('parent_id', $childIds)
+            ->where('child_id', $relative->id)
+            ->exists()
+            || Partnership::query()
+                ->where(fn ($query) => $query
+                    ->where(fn ($query) => $query
+                        ->whereIn('partner_one_id', $childIds)
+                        ->where('partner_two_id', $relative->id))
+                    ->orWhere(fn ($query) => $query
+                        ->whereIn('partner_two_id', $childIds)
+                        ->where('partner_one_id', $relative->id)))
                 ->exists();
     }
 }

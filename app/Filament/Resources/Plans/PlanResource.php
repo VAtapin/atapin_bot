@@ -1,0 +1,75 @@
+<?php
+
+namespace App\Filament\Resources\Plans;
+
+use App\Filament\Resources\Plans\Pages\CreatePlan;
+use App\Filament\Resources\Plans\Pages\EditPlan;
+use App\Filament\Resources\Plans\Pages\ListPlans;
+use App\Models\Plan;
+use BackedEnum;
+use Filament\Actions\EditAction;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
+use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
+use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
+
+class PlanResource extends Resource
+{
+    protected static ?string $model = Plan::class;
+
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCreditCard;
+
+    protected static ?string $navigationLabel = 'Тарифы';
+
+    protected static ?string $modelLabel = 'тариф';
+
+    protected static ?string $pluralModelLabel = 'Тарифы';
+
+    public static function form(Schema $schema): Schema
+    {
+        return $schema->components([
+            TextInput::make('name')->label('Название')->required(),
+            TextInput::make('code')->label('Код')->required()->unique(ignoreRecord: true),
+            Textarea::make('description')->label('Описание'),
+            TextInput::make('price_monthly')->label('Цена в месяц')->numeric()->required(),
+            TextInput::make('currency')->label('Валюта')->default('EUR')->required(),
+            TextInput::make('storage_limit_bytes')->label('Хранилище, байт')->numeric()->required(),
+            TextInput::make('people_limit')->label('Лимит людей')->numeric()->required(),
+            TextInput::make('member_limit')->label('Лимит участников')->numeric()->required(),
+            TextInput::make('backup_retention_days')->label('Хранение копий, дней')->numeric()->required(),
+            Toggle::make('custom_bot')->label('Собственный бот'),
+            Toggle::make('custom_domain')->label('Собственный домен'),
+            Toggle::make('is_active')->label('Доступен')->default(true),
+        ]);
+    }
+
+    public static function table(Table $table): Table
+    {
+        return $table->columns([
+            TextColumn::make('name')->label('Тариф'),
+            TextColumn::make('price_monthly')->label('Цена')->money(fn (Plan $record): string => $record->currency),
+            TextColumn::make('people_limit')->label('Людей'),
+            TextColumn::make('member_limit')->label('Участников'),
+            IconColumn::make('is_active')->label('Активен')->boolean(),
+        ])->recordActions([EditAction::make()]);
+    }
+
+    public static function canViewAny(): bool
+    {
+        return (bool) auth()->user()?->is_super_admin;
+    }
+
+    public static function getPages(): array
+    {
+        return [
+            'index' => ListPlans::route('/'),
+            'create' => CreatePlan::route('/create'),
+            'edit' => EditPlan::route('/{record}/edit'),
+        ];
+    }
+}
