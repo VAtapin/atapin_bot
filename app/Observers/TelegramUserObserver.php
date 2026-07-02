@@ -5,6 +5,8 @@ namespace App\Observers;
 use App\Models\TelegramUser;
 use App\Services\TelegramUserNotifier;
 
+use function Illuminate\Support\defer;
+
 class TelegramUserObserver
 {
     public function created(TelegramUser $user): void
@@ -27,6 +29,14 @@ class TelegramUserObserver
             return;
         }
 
-        app(TelegramUserNotifier::class)->changed($user->load('person'), $changes);
+        $userId = $user->getKey();
+
+        defer(function () use ($userId, $changes): void {
+            $user = TelegramUser::query()->with('person')->find($userId);
+
+            if ($user) {
+                app(TelegramUserNotifier::class)->changed($user, $changes);
+            }
+        });
     }
 }

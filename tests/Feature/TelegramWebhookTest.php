@@ -197,7 +197,7 @@ class TelegramWebhookTest extends TestCase
         );
     }
 
-    public function test_admin_can_approve_user_from_inline_button(): void
+    public function test_admin_can_manage_user_access_from_inline_buttons(): void
     {
         config()->set('services.telegram.admin_ids', ['999']);
         $target = TelegramUser::query()->create([
@@ -205,13 +205,33 @@ class TelegramWebhookTest extends TestCase
             'status' => 'pending',
         ]);
 
+        $this->sendAccessCallback(3001, 'approve', $target);
+        $this->assertSame('approved', $target->fresh()->status);
+
+        $this->sendAccessCallback(3002, 'admin', $target);
+        $this->assertTrue($target->fresh()->is_bot_admin);
+
+        $this->sendAccessCallback(3003, 'unadmin', $target);
+        $this->assertFalse($target->fresh()->is_bot_admin);
+
+        $this->sendAccessCallback(3004, 'block', $target);
+        $this->assertSame('blocked', $target->fresh()->status);
+
+        foreach (range(1, 4) as $callbackId) {
+            Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/answerCallbackQuery')
+                && $request->data()['callback_query_id'] === 'callback-'.$callbackId);
+        }
+    }
+
+    private function sendAccessCallback(int $updateId, string $action, TelegramUser $target): void
+    {
         $this->withHeader('X-Telegram-Bot-Api-Secret-Token', 'test-secret')
             ->postJson('/api/telegram/webhook', [
-                'update_id' => 3001,
+                'update_id' => $updateId,
                 'callback_query' => [
-                    'id' => 'callback-1',
+                    'id' => 'callback-'.($updateId - 3000),
                     'from' => ['id' => 999, 'first_name' => 'Админ'],
-                    'data' => 'access:approve:'.$target->id,
+                    'data' => 'access:'.$action.':'.$target->id,
                     'message' => [
                         'message_id' => 55,
                         'chat' => ['id' => 999, 'type' => 'private'],
@@ -219,8 +239,6 @@ class TelegramWebhookTest extends TestCase
                 ],
             ])
             ->assertOk();
-
-        $this->assertSame('approved', $target->fresh()->status);
     }
 
     private function sendPrivateMessage(int $updateId, string $text): void

@@ -200,26 +200,21 @@ class TelegramWebhookController extends Controller
             ->first();
 
         if (! $isConfiguredAdmin && ! ($actor?->is_bot_admin && $actor->isApproved())) {
-            $this->bot->request('answerCallbackQuery', [
-                'callback_query_id' => $callback['id'],
-                'text' => 'Недостаточно прав.',
-                'show_alert' => true,
-            ]);
+            $this->answerAccessCallback($callback, 'Недостаточно прав.', true);
 
             return;
         }
 
         if (! preg_match('/^access:(approve|block|admin|unadmin):(\d+)$/', $data, $matches)) {
+            $this->answerAccessCallback($callback, 'Команда больше не поддерживается.');
+
             return;
         }
 
         $user = TelegramUser::query()->find($matches[2]);
 
         if (! $user) {
-            $this->bot->request('answerCallbackQuery', [
-                'callback_query_id' => $callback['id'],
-                'text' => 'Пользователь уже удалён.',
-            ]);
+            $this->answerAccessCallback($callback, 'Пользователь уже удалён.');
 
             return;
         }
@@ -238,19 +233,37 @@ class TelegramWebhookController extends Controller
             'unadmin' => '👤 Права администратора сняты',
         };
 
-        $this->bot->request('answerCallbackQuery', [
-            'callback_query_id' => $callback['id'],
-            'text' => $actionText,
-        ]);
+        $this->answerAccessCallback($callback, $actionText);
 
         if (isset($callback['message']['chat']['id'], $callback['message']['message_id'])) {
-            $this->bot->request('editMessageText', [
-                'chat_id' => $callback['message']['chat']['id'],
-                'message_id' => $callback['message']['message_id'],
-                'text' => '👤 <b>'.e($user->display_name)."</b>\n\n{$actionText}",
-                'parse_mode' => 'HTML',
-                'reply_markup' => $this->accessKeyboard($user),
+            try {
+                $this->bot->request('editMessageText', [
+                    'chat_id' => $callback['message']['chat']['id'],
+                    'message_id' => $callback['message']['message_id'],
+                    'text' => '👤 <b>'.e($user->display_name)."</b>\n\n{$actionText}",
+                    'parse_mode' => 'HTML',
+                    'reply_markup' => $this->accessKeyboard($user),
+                ]);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+    }
+
+    private function answerAccessCallback(array $callback, string $text, bool $showAlert = false): void
+    {
+        if (! isset($callback['id'])) {
+            return;
+        }
+
+        try {
+            $this->bot->request('answerCallbackQuery', [
+                'callback_query_id' => $callback['id'],
+                'text' => $text,
+                'show_alert' => $showAlert,
             ]);
+        } catch (Throwable $exception) {
+            report($exception);
         }
     }
 
