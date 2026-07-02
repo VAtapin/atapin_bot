@@ -37,6 +37,8 @@ class RequireOwnerTwoFactor
             );
         }
 
+        $request->session()->put('two_factor_intended_url', $request->fullUrl());
+
         return redirect()->route('two-factor.challenge');
     }
 }

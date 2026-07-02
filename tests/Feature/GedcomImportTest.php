@@ -106,4 +106,42 @@ GEDCOM);
             @unlink($path);
         }
     }
+
+    public function test_it_imports_all_referenced_media_without_duplicates(): void
+    {
+        $path = storage_path('framework/testing-referenced-media.ged');
+        file_put_contents($path, <<<'GEDCOM'
+0 HEAD
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Анна /Иванова/
+1 OBJE @M1@
+1 OBJE @M2@
+0 @M1@ OBJE
+1 FILE https://example.test/anna-portrait.jpg
+2 FORM jpg
+2 TITL Портрет
+1 _PRIM Y
+0 @M2@ OBJE
+1 FILE https://example.test/anna-family.png
+2 FORM png
+2 TITL Семейное фото
+0 TRLR
+GEDCOM);
+
+        try {
+            $this->assertSame(0, Artisan::call('gedcom:import', ['file' => $path]));
+            $person = Person::query()->where('gedcom_id', 'I1')->firstOrFail();
+            $this->assertSame(2, $person->photos()->count());
+            $this->assertSame(
+                ['I1:M1', 'I1:M2'],
+                $person->photos()->orderBy('sort_order')->pluck('gedcom_key')->all(),
+            );
+
+            $this->assertSame(0, Artisan::call('gedcom:import', ['file' => $path]));
+            $this->assertSame(2, $person->photos()->count());
+        } finally {
+            @unlink($path);
+        }
+    }
 }

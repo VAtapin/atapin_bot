@@ -11,13 +11,8 @@ class TelegramUserObserver
 {
     public function created(TelegramUser $user): void
     {
-        if (app()->runningUnitTests()) {
-            return;
-        }
-
-        if (! $user->is_bot_admin && $user->status !== 'approved') {
-            app(TelegramUserNotifier::class)->newRequest($user);
-        }
+        // Заявка относится к конкретному дереву и отправляется
+        // TreeMembershipObserver после создания членства.
     }
 
     public function updated(TelegramUser $user): void

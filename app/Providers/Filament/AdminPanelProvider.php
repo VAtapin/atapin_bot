@@ -2,21 +2,27 @@
 
 namespace App\Providers\Filament;
 
-use App\Filament\Widgets\FamilyStats;
-use App\Filament\Widgets\UpcomingBirthdays;
+use App\Filament\Resources\ChangeLogs\ChangeLogResource;
+use App\Filament\Pages\SystemHealth;
+use App\Filament\Resources\CmsPages\CmsPageResource;
+use App\Filament\Resources\FamilyTrees\FamilyTreeResource;
+use App\Filament\Resources\Payments\PaymentResource;
+use App\Filament\Resources\PlatformSettings\PlatformSettingResource;
+use App\Filament\Resources\Plans\PlanResource;
+use App\Filament\Resources\Subscriptions\SubscriptionResource;
+use App\Filament\Resources\TelegramUpdates\TelegramUpdateResource;
+use App\Filament\Resources\Users\UserResource;
+use App\Filament\Widgets\PlatformStats;
 use App\Http\Middleware\RequireOwnerTwoFactor;
-use App\Http\Middleware\ResolveAdminTree;
-use App\Support\CurrentTree;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Navigation\NavigationItem;
 use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Filament\Support\Icons\Heroicon;
+use Filament\View\PanelsRenderHook;
 use Filament\Widgets\AccountWidget;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -33,39 +39,41 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->login()
+            ->login(fn () => redirect()->route('login'))
             ->passwordReset()
             ->brandName('Я и дом мой')
             ->colors([
                 'primary' => Color::Emerald,
             ])
             ->sidebarCollapsibleOnDesktop()
-            ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
-            ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
+            ->resources([
+                FamilyTreeResource::class,
+                UserResource::class,
+                PlanResource::class,
+                SubscriptionResource::class,
+                PaymentResource::class,
+                PlatformSettingResource::class,
+                CmsPageResource::class,
+                TelegramUpdateResource::class,
+                ChangeLogResource::class,
+            ])
             ->pages([
                 Dashboard::class,
+                SystemHealth::class,
             ])
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
                 AccountWidget::class,
-                FamilyStats::class,
-                UpcomingBirthdays::class,
+                PlatformStats::class,
             ])
-            ->navigationItems([
-                NavigationItem::make('Открыть семейное древо')
-                    ->url(fn (): string => app(CurrentTree::class)->get()
-                        ? route('family.tree', app(CurrentTree::class)->get())
-                        : route('family.app'))
-                    ->icon(Heroicon::OutlinedShare)
-                    ->openUrlInNewTab()
-                    ->sort(-1),
-            ])
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_START,
+                fn () => view('filament.platform-context'),
+            )
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
                 AuthenticateSession::class,
-                ResolveAdminTree::class,
                 ShareErrorsFromSession::class,
                 PreventRequestForgery::class,
                 SubstituteBindings::class,

@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\FamilyTree;
 use App\Models\TelegramUser;
+use App\Services\AuthRedirector;
 use App\Services\ExternalIdentityService;
 use App\Services\TreeAccessService;
+use App\Support\SafeReturnUrl;
 use Firebase\JWT\JWK;
 use Firebase\JWT\JWT;
 use Illuminate\Http\Request;
@@ -27,12 +29,20 @@ class TelegramLoginController extends Controller
         $verifier = $this->base64Url(random_bytes(64));
         $nonce = Str::random(64);
         $redirectUri = $this->redirectUri();
+        $tree = $request->filled('tree')
+            ? FamilyTree::query()
+                ->where('slug', $request->string('tree'))
+                ->where('status', 'active')
+                ->first()
+            : null;
 
         $request->session()->put('telegram_oidc', [
             'state' => $state,
             'verifier' => $verifier,
             'nonce' => $nonce,
             'created_at' => time(),
+            'tree_id' => $tree?->id,
+            'return_to' => SafeReturnUrl::path($request->query('return')),
         ]);
 
         $query = http_build_query([
@@ -52,7 +62,7 @@ class TelegramLoginController extends Controller
     public function callback(Request $request): RedirectResponse
     {
         if ($request->filled('error')) {
-            return redirect()->route('family.app')
+            return redirect()->route('login')
                 ->with('telegram_auth_error', 'Вход через Telegram отменён.');
         }
 
@@ -63,7 +73,7 @@ class TelegramLoginController extends Controller
             || ! hash_equals((string) ($oidc['state'] ?? ''), (string) $request->query('state'))
             || time() - (int) ($oidc['created_at'] ?? 0) > 600
         ) {
-            return redirect()->route('family.app')
+            return redirect()->route('login')
                 ->with('telegram_auth_error', 'Сессия входа устарела. Попробуйте ещё раз.');
         }
 
@@ -90,14 +100,14 @@ class TelegramLoginController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            return redirect()->route('family.app')
+            return redirect()->route('login')
                 ->with('telegram_auth_error', 'Telegram не подтвердил вход. Попробуйте ещё раз.');
         }
 
         $telegramId = (int) ($claims->id ?? $claims->sub ?? 0);
 
         if ($telegramId <= 0) {
-            return redirect()->route('family.app')
+            return redirect()->route('login')
                 ->with('telegram_auth_error', 'Telegram не передал ID пользователя.');
         }
 
@@ -121,33 +131,42 @@ class TelegramLoginController extends Controller
         }
 
         $user->save();
-        $tree = FamilyTree::query()->find($request->session()->get('family_tree_id'))
-            ?: FamilyTree::query()->where('status', 'active')->oldest('id')->first();
+        $tree = isset($oidc['tree_id'])
+            ? FamilyTree::query()->whereKey($oidc['tree_id'])->where('status', 'active')->first()
+            : null;
         $familyUser = app(ExternalIdentityService::class)->resolve('telegram', $telegramId, [
             'username' => $user->username,
             'first_name' => $user->first_name,
             'last_name' => $user->last_name,
             'photo_url' => $user->photo_url,
         ]);
-        $user->updateQuietly([
+        $user->updateQuietly(array_filter([
             'user_id' => $familyUser->id,
             'current_tree_id' => $tree?->id,
-        ]);
+        ], fn ($value): bool => $value !== null));
         if ($request->session()->has('family_invitation_token')) {
             $membership = app(TreeAccessService::class)->acceptInvitation(
                 $familyUser,
                 (string) $request->session()->pull('family_invitation_token'),
             );
             $tree = $membership->tree;
-        } else {
+        } elseif ($tree) {
             $membership = app(TreeAccessService::class)->membership($familyUser, $tree);
-            if ($user->isApproved() && $membership->status === 'pending') {
+            if (
+                (
+                    in_array((string) $telegramId, config('services.telegram.admin_ids', []), true)
+                    || $familyUser->is_super_admin
+                )
+                && $membership->status === 'pending'
+            ) {
                 $membership->update([
                     'status' => 'approved',
                     'role' => $user->is_bot_admin ? 'moderator' : 'guest',
                     'approved_at' => now(),
                 ]);
             }
+        } else {
+            $membership = null;
         }
         $request->session()->regenerate();
         $request->session()->put('family_telegram_user_id', $user->id);
@@ -155,7 +174,14 @@ class TelegramLoginController extends Controller
         $request->session()->put('family_tree_id', $tree?->id);
         Auth::login($familyUser);
 
-        return redirect()->route('family.app');
+        if (
+            ($returnTo = SafeReturnUrl::path($oidc['return_to'] ?? null))
+            && ($familyUser->is_super_admin || $membership?->status === 'approved')
+        ) {
+            return redirect()->to($returnTo);
+        }
+
+        return app(AuthRedirector::class)->redirect($familyUser, $tree);
     }
 
     public function logout(Request $request): RedirectResponse
@@ -168,7 +194,7 @@ class TelegramLoginController extends Controller
         ]);
         $request->session()->regenerateToken();
 
-        return redirect()->route('family.app');
+        return redirect()->route('home');
     }
 
     private function validateIdToken(string $idToken, string $nonce): object
@@ -190,7 +216,8 @@ class TelegramLoginController extends Controller
         if (
             ($claims->iss ?? null) !== 'https://oauth.telegram.org'
             || ! in_array((string) config('services.telegram.oidc_client_id'), array_map('strval', $audience), true)
-            || (isset($claims->nonce) && ! hash_equals($nonce, (string) $claims->nonce))
+            || ! isset($claims->nonce)
+            || ! hash_equals($nonce, (string) $claims->nonce)
         ) {
             throw ValidationException::withMessages(['id_token' => 'Некорректные claims Telegram.']);
         }

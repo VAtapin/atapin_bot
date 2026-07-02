@@ -7,6 +7,7 @@ use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
+use App\Services\TreeStorageService;
 use App\Support\CurrentTree;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -32,9 +33,17 @@ class ImportGedcom extends Command
 
     private array $families = [];
 
+    private array $media = [];
+
     private array $idMap = [];
 
     private ?array $existingPhotoFiles = null;
+
+    private ?string $gedcomDirectory = null;
+
+    private int $photoBytesUsed = 0;
+
+    private int $photoBytesLimit = 0;
 
     private array $stats = [
         'residences' => 0,
@@ -57,6 +66,8 @@ class ImportGedcom extends Command
                 ->firstOrFail()
             : app(CurrentTree::class)->resolveDefault();
         app(CurrentTree::class)->set($tree);
+        $this->photoBytesUsed = app(TreeStorageService::class)->recalculate($tree);
+        $this->photoBytesLimit = (int) ($tree->plan?->storage_limit_bytes ?? 0);
 
         $file = $this->resolveFile((string) $this->argument('file'));
 
@@ -119,6 +130,7 @@ class ImportGedcom extends Command
 
     private function parseGedcom(string $file): void
     {
+        $this->gedcomDirectory = dirname(realpath($file) ?: $file);
         $handle = fopen($file, 'rb');
 
         if (! $handle) {
@@ -132,7 +144,7 @@ class ImportGedcom extends Command
         while (($line = fgets($handle)) !== false) {
             $line = $this->cleanLine($line);
 
-            if (preg_match('/^0 @([^@]+)@ (INDI|FAM)$/', $line, $matches)) {
+            if (preg_match('/^0 @([^@]+)@ (INDI|FAM|OBJE)$/', $line, $matches)) {
                 $this->finishRecord($recordType, $recordId, $recordLines);
                 $recordId = $matches[1];
                 $recordType = $matches[2];
@@ -171,7 +183,45 @@ class ImportGedcom extends Command
             return;
         }
 
-        $this->families[$id] = $this->parseFamily($id, $lines);
+        if ($type === 'FAM') {
+            $this->families[$id] = $this->parseFamily($id, $lines);
+
+            return;
+        }
+
+        $this->media[$id] = $this->parseMedia($id, $lines);
+    }
+
+    private function parseMedia(string $id, array $lines): array
+    {
+        $media = ['xref' => $id, 'raw' => $lines];
+        $fileContext = false;
+
+        foreach ($lines as $line) {
+            [$level, $tag, $value] = $this->lineParts($line);
+            if ($level === null || $tag === null) {
+                continue;
+            }
+
+            if ($level === 1 && $tag === 'FILE') {
+                $media['FILE'] = $value;
+                $fileContext = true;
+
+                continue;
+            }
+
+            if ($level === 1) {
+                $fileContext = false;
+            }
+
+            if ($fileContext && $level >= 2 && in_array($tag, ['FORM', 'TITL'], true)) {
+                $media[$tag] = $value;
+            } elseif ($level === 1 && in_array($tag, ['FORM', 'TITL', '_PRIM', '_PERSONALPHOTO', '_PARENTPHOTO', '_PARENTRIN', '_PHOTO_RIN', '_CUTOUT'], true)) {
+                $media[$tag] = $value;
+            }
+        }
+
+        return $media;
     }
 
     private function parsePerson(string $id, array $lines): array
@@ -368,6 +418,7 @@ class ImportGedcom extends Command
         $bar->start();
 
         foreach ($this->people as $gedcomId => $source) {
+            $source['photos'] = $this->resolvedPhotos($source['photos']);
             [$firstName, $middleName, $lastName] = $this->personName($source);
             $residence = $this->currentResidence($source['residences']);
             $birthDate = $this->eventDate($source, 'BIRT');
@@ -389,7 +440,13 @@ class ImportGedcom extends Command
                         default => 'unknown',
                     },
                     'birth_date' => $birthDate,
+                    'birth_date_precision' => $this->datePrecision(
+                        $this->eventValue($source, 'BIRT', 'DATE'),
+                    ),
                     'death_date' => $this->eventDate($source, 'DEAT'),
+                    'death_date_precision' => $this->datePrecision(
+                        $this->eventValue($source, 'DEAT', 'DATE'),
+                    ),
                     'birth_place' => $this->eventValue($source, 'BIRT', 'PLAC'),
                     'death_place' => $this->eventValue($source, 'DEAT', 'PLAC'),
                     'burial_place' => $this->eventValue($source, 'BURI', 'PLAC'),
@@ -422,6 +479,26 @@ class ImportGedcom extends Command
 
         $bar->finish();
         $this->newLine();
+    }
+
+    private function resolvedPhotos(array $photos): array
+    {
+        return collect($photos)
+            ->map(function (array $photo): array {
+                $pointer = $this->pointer($photo['value'] ?? null);
+                if (! $pointer || ! isset($this->media[$pointer])) {
+                    return $photo;
+                }
+
+                return array_replace($this->media[$pointer], $photo, [
+                    'xref' => $pointer,
+                    'raw' => [
+                        ...($this->media[$pointer]['raw'] ?? []),
+                        ...($photo['raw'] ?? []),
+                    ],
+                ]);
+            })
+            ->all();
     }
 
     private function importFamilies(): void
@@ -600,14 +677,25 @@ class ImportGedcom extends Command
         return preg_match('/^\d{4}$/', $date) ? "{$date}-01-01" : null;
     }
 
+    private function datePrecision(?string $date): string
+    {
+        $date = mb_strtoupper(trim((string) $date));
+        $date = preg_replace('/^(ABT|ABOUT|BEF|BEFORE|AFT|AFTER|CAL|EST)\s+/u', '', $date);
+
+        if (preg_match('/^\d{4}$/', $date)) {
+            return 'year';
+        }
+
+        if (preg_match('/^[A-Z]{3}\s+\d{4}$/', $date)) {
+            return 'month';
+        }
+
+        return 'day';
+    }
+
     private function primaryPhoto(array $photos): ?string
     {
-        $images = collect($photos)->filter(function (array $photo): bool {
-            $file = (string) ($photo['FILE'] ?? '');
-
-            return str_starts_with($file, 'http')
-                && ! str_ends_with(mb_strtolower(parse_url($file, PHP_URL_PATH) ?: ''), '.pdf');
-        });
+        $images = collect($photos)->filter(fn (array $photo): bool => $this->isImagePhoto($photo));
 
         $photo = $images->first(
             fn (array $item): bool => ($item['_PRIM'] ?? null) === 'Y'
@@ -630,21 +718,32 @@ class ImportGedcom extends Command
         $primaryUrl = $this->primaryPhoto($images->all());
         $primaryPath = null;
 
+        $activeKeys = [];
         foreach ($images as $index => $photo) {
             $url = (string) $photo['FILE'];
             $path = null;
-            $record = PersonPhoto::query()->firstOrNew([
-                'gedcom_key' => $gedcomId.':'.($index + 1),
-            ]);
+            $key = $gedcomId.':'.($photo['xref'] ?? sha1($this->normalisePhotoSource($url)));
+            $activeKeys[] = $key;
+            $record = PersonPhoto::query()->where('gedcom_key', $key)->first()
+                ?: PersonPhoto::query()
+                    ->where('person_id', $person->id)
+                    ->where('source_url', $url)
+                    ->first()
+                ?: PersonPhoto::query()
+                    ->where('person_id', $person->id)
+                    ->where('gedcom_key', $gedcomId.':'.($index + 1))
+                    ->first()
+                ?: new PersonPhoto;
 
             if ($this->option('photos')) {
                 $path = $this->existingPhotoPath($record, $gedcomId, $index + 1)
-                    ?: $this->downloadPhoto($url, $gedcomId, $index + 1);
+                    ?: $this->importPhotoFile($url, $gedcomId, $index + 1);
             }
 
             $isPrimary = $url === $primaryUrl;
             $record->fill([
                 'person_id' => $person->id,
+                'gedcom_key' => $key,
                 'photo_album_id' => null,
                 'path' => $path ?? $record->path,
                 'source_url' => $url,
@@ -652,6 +751,9 @@ class ImportGedcom extends Command
                 'is_primary' => $isPrimary,
                 'sort_order' => $index,
                 'gedcom_data' => $photo,
+                'file_size' => ($path ?? $record->path) && Storage::disk('public')->exists($path ?? $record->path)
+                    ? Storage::disk('public')->size($path ?? $record->path)
+                    : 0,
             ])->save();
 
             if ($isPrimary && $record->path) {
@@ -664,7 +766,7 @@ class ImportGedcom extends Command
             ->whereNotNull('gedcom_key')
             ->whereNotIn(
                 'gedcom_key',
-                $images->keys()->map(fn (int $index): string => $gedcomId.':'.($index + 1)),
+                $activeKeys,
             )
             ->delete();
 
@@ -682,23 +784,53 @@ class ImportGedcom extends Command
     private function isImagePhoto(array $photo): bool
     {
         $file = (string) ($photo['FILE'] ?? '');
+        $path = mb_strtolower(parse_url($file, PHP_URL_PATH) ?: $file);
 
-        return str_starts_with($file, 'http')
-            && ! str_ends_with(mb_strtolower(parse_url($file, PHP_URL_PATH) ?: ''), '.pdf');
+        return $file !== ''
+            && ! str_ends_with($path, '.pdf')
+            && (
+                str_starts_with($file, 'http://')
+                || str_starts_with($file, 'https://')
+                || in_array(pathinfo($path, PATHINFO_EXTENSION), ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'tif', 'tiff'], true)
+            );
+    }
+
+    private function importPhotoFile(string $source, string $gedcomId, int $index): ?string
+    {
+        if (! preg_match('~^https?://~i', $source)) {
+            return $this->copyLocalPhoto($source, $gedcomId, $index);
+        }
+
+        return $this->downloadPhoto($source, $gedcomId, $index);
     }
 
     private function downloadPhoto(string $url, string $gedcomId, int $index): ?string
     {
         try {
+            if (! $this->isPublicHttpUrl($url)) {
+                $this->stats['photos_failed']++;
+
+                return null;
+            }
+
             $response = Http::timeout(30)->retry(2, 500)->get($url);
 
-            if (! $response->successful()) {
+            if (
+                ! $response->successful()
+                || strlen($response->body()) > 25 * 1024 * 1024
+                || ! str_starts_with(mb_strtolower((string) $response->header('Content-Type')), 'image/')
+            ) {
                 $this->stats['photos_failed']++;
 
                 return null;
             }
 
             $extension = $this->imageExtension($response->header('Content-Type'), $url);
+            if (! $this->reservePhotoBytes(strlen($response->body()))) {
+                $this->stats['photos_failed']++;
+
+                return null;
+            }
             $path = 'trees/'.app(CurrentTree::class)->id().'/people/photos/'
                 .Str::slug($gedcomId).'-'
                 .str_pad((string) $index, 3, '0', STR_PAD_LEFT)
@@ -712,6 +844,81 @@ class ImportGedcom extends Command
 
             return null;
         }
+    }
+
+    private function copyLocalPhoto(string $source, string $gedcomId, int $index): ?string
+    {
+        $source = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, rawurldecode($source));
+        $candidates = [
+            $source,
+            $this->gedcomDirectory.DIRECTORY_SEPARATOR.ltrim($source, DIRECTORY_SEPARATOR),
+            storage_path('app/import/'.ltrim($source, DIRECTORY_SEPARATOR)),
+        ];
+        $real = collect($candidates)
+            ->map(fn (string $candidate): string|false => realpath($candidate))
+            ->first(fn (string|false $candidate): bool => is_string($candidate) && is_file($candidate));
+
+        if (! is_string($real) || filesize($real) > 25 * 1024 * 1024 || @getimagesize($real) === false) {
+            $this->stats['photos_failed']++;
+
+            return null;
+        }
+
+        $extension = $this->imageExtension((string) mime_content_type($real), $real);
+        if (! $this->reservePhotoBytes(filesize($real))) {
+            $this->stats['photos_failed']++;
+
+            return null;
+        }
+        $path = 'trees/'.app(CurrentTree::class)->id().'/people/photos/'
+            .Str::slug($gedcomId).'-'
+            .str_pad((string) $index, 3, '0', STR_PAD_LEFT)
+            .'.'.$extension;
+        Storage::disk('public')->put($path, file_get_contents($real));
+        $this->stats['photos_downloaded']++;
+
+        return $path;
+    }
+
+    private function reservePhotoBytes(int $bytes): bool
+    {
+        if ($this->photoBytesLimit > 0 && $this->photoBytesUsed + $bytes > $this->photoBytesLimit) {
+            return false;
+        }
+
+        $this->photoBytesUsed += $bytes;
+
+        return true;
+    }
+
+    private function isPublicHttpUrl(string $url): bool
+    {
+        $parts = parse_url($url);
+        $host = $parts['host'] ?? '';
+        if (! in_array($parts['scheme'] ?? '', ['http', 'https'], true) || $host === '') {
+            return false;
+        }
+
+        $ips = filter_var($host, FILTER_VALIDATE_IP)
+            ? [$host]
+            : (gethostbynamel($host) ?: []);
+
+        return $ips !== [] && collect($ips)->every(
+            fn (string $ip): bool => (bool) filter_var(
+                $ip,
+                FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE,
+            ),
+        );
+    }
+
+    private function normalisePhotoSource(string $source): string
+    {
+        $parts = parse_url($source);
+
+        return isset($parts['host'])
+            ? mb_strtolower(($parts['scheme'] ?? '').'://'.$parts['host'].($parts['path'] ?? ''))
+            : mb_strtolower(str_replace('\\', '/', $source));
     }
 
     private function existingPhotoPath(PersonPhoto $photo, string $gedcomId, int $index): ?string

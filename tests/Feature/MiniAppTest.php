@@ -6,6 +6,9 @@ use App\Models\ParentChild;
 use App\Models\Person;
 use App\Models\PersonPhoto;
 use App\Models\TelegramUser;
+use App\Models\TreeMembership;
+use App\Models\User;
+use App\Support\CurrentTree;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -25,11 +28,7 @@ class MiniAppTest extends TestCase
     {
         config()->set('services.telegram.bot_token', self::TOKEN);
 
-        TelegramUser::query()->create([
-            'telegram_user_id' => 42,
-            'first_name' => 'Анна',
-            'status' => 'approved',
-        ]);
+        $this->telegramUser(42);
 
         $mother = Person::factory()->create([
             'first_name' => 'Анна',
@@ -65,10 +64,7 @@ class MiniAppTest extends TestCase
     {
         config()->set('services.telegram.bot_token', self::TOKEN);
 
-        TelegramUser::query()->create([
-            'telegram_user_id' => 42,
-            'status' => 'pending',
-        ]);
+        $this->telegramUser(42, 'pending');
 
         $this->withHeader('X-Telegram-Init-Data', $this->signedInitData(42))
             ->getJson('/api/family/tree')
@@ -78,10 +74,7 @@ class MiniAppTest extends TestCase
 
     public function test_approved_browser_session_can_read_family_data_without_init_data(): void
     {
-        $user = TelegramUser::query()->create([
-            'telegram_user_id' => 77,
-            'status' => 'approved',
-        ]);
+        $user = $this->telegramUser(77);
         Person::factory()->create();
 
         $this->withSession(['family_telegram_user_id' => $user->id])
@@ -105,11 +98,7 @@ class MiniAppTest extends TestCase
             'child_id' => $grandchild->id,
             'type' => 'biological',
         ]);
-        $user = TelegramUser::query()->create([
-            'telegram_user_id' => 78,
-            'status' => 'approved',
-            'person_id' => $grandparent->id,
-        ]);
+        $user = $this->telegramUser(78, 'approved', $grandparent);
 
         $this->withSession(['family_telegram_user_id' => $user->id])
             ->getJson('/api/family/tree?relation=grandchildren')
@@ -126,9 +115,8 @@ class MiniAppTest extends TestCase
 
     public function test_open_mini_app_can_consume_queued_navigation(): void
     {
-        $user = TelegramUser::query()->create([
-            'telegram_user_id' => 79,
-            'status' => 'approved',
+        $user = $this->telegramUser(79);
+        $user->update([
             'mini_app_action' => [
                 'tab' => 'list',
                 'relation' => 'nephews',
@@ -172,10 +160,7 @@ class MiniAppTest extends TestCase
                 '_PHOTO_RIN' => 'MH:P100',
             ],
         ]);
-        $user = TelegramUser::query()->create([
-            'telegram_user_id' => 80,
-            'status' => 'approved',
-        ]);
+        $user = $this->telegramUser(80);
 
         $this->withSession(['family_telegram_user_id' => $user->id])
             ->getJson('/api/family/gallery')
@@ -208,5 +193,30 @@ class MiniAppTest extends TestCase
         $data['hash'] = hash_hmac('sha256', $checkString, $secretKey);
 
         return http_build_query($data, '', '&', PHP_QUERY_RFC3986);
+    }
+
+    private function telegramUser(
+        int $telegramId,
+        string $status = 'approved',
+        ?Person $person = null,
+    ): TelegramUser {
+        $user = User::factory()->create();
+        TreeMembership::query()->create([
+            'tree_id' => app(CurrentTree::class)->id(),
+            'user_id' => $user->id,
+            'person_id' => $person?->id,
+            'role' => $person ? 'member' : 'guest',
+            'status' => $status,
+            'approved_at' => $status === 'approved' ? now() : null,
+        ]);
+
+        return TelegramUser::query()->create([
+            'user_id' => $user->id,
+            'current_tree_id' => app(CurrentTree::class)->id(),
+            'telegram_user_id' => $telegramId,
+            'first_name' => 'Анна',
+            'status' => $status,
+            'person_id' => $person?->id,
+        ]);
     }
 }

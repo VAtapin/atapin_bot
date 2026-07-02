@@ -21,7 +21,26 @@ class FamilyNotificationService
             .'Дерево: <b>'.e($tree->name)."</b>\n"
             .'Пользователь: '.e($membership->user->name)."\n"
             .'Статус: ожидает подтверждения.';
-        $this->sendToManagers($tree, $text);
+        $this->sendToManagers($tree, $text, [
+            'reply_markup' => [
+                'inline_keyboard' => [
+                    [
+                        [
+                            'text' => '✅ Разрешить',
+                            'callback_data' => 'membership:approve:'.$membership->id,
+                        ],
+                        [
+                            'text' => '⛔ Заблокировать',
+                            'callback_data' => 'membership:block:'.$membership->id,
+                        ],
+                    ],
+                    [[
+                        'text' => '🛡 Сделать модератором',
+                        'callback_data' => 'membership:moderator:'.$membership->id,
+                    ]],
+                ],
+            ],
+        ]);
     }
 
     public function membershipChanged(TreeMembership $membership): void
@@ -37,7 +56,14 @@ class FamilyNotificationService
         $text = "🔔 <b>Доступ к семейному дереву изменён</b>\n\n"
             .'Дерево: <b>'.e($membership->tree->name)."</b>\n"
             .'Роль: '.e(TreeMembership::ROLES[$membership->role] ?? $membership->role)."\n"
-            .'Доступ: '.e($membership->status);
+            .'Доступ: '.e(match ($membership->status) {
+                'approved' => 'разрешён',
+                'blocked' => 'заблокирован',
+                default => 'ожидает подтверждения',
+            })
+            .($membership->person
+                ? "\nКарточка: <b>".e($membership->person->full_name).'</b>'
+                : "\nКарточка человека пока не привязана.");
         $this->safeSend($identity->provider_user_id, $text);
     }
 
@@ -69,7 +95,7 @@ class FamilyNotificationService
         $this->sendToManagers($tree, $text);
     }
 
-    private function sendToManagers(FamilyTree $tree, string $text): void
+    private function sendToManagers(FamilyTree $tree, string $text, array $options = []): void
     {
         $userIds = $tree->memberships()
             ->where('status', 'approved')
@@ -79,17 +105,17 @@ class FamilyNotificationService
             ->whereIn('user_id', $userIds)
             ->where('provider', 'telegram')
             ->pluck('provider_user_id')
-            ->each(fn (string $telegramId) => $this->safeSend($telegramId, $text));
+            ->each(fn (string $telegramId) => $this->safeSend($telegramId, $text, $options));
     }
 
-    private function safeSend(int|string $chatId, string $text): void
+    private function safeSend(int|string $chatId, string $text, array $options = []): void
     {
         if (! config('services.telegram.bot_token')) {
             return;
         }
 
         try {
-            $this->bot->sendMessage($chatId, $text);
+            $this->bot->sendMessage($chatId, $text, $options);
         } catch (Throwable $exception) {
             report($exception);
         }

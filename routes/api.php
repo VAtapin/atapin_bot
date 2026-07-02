@@ -4,13 +4,18 @@ use App\Http\Controllers\AccountPrivacyController;
 use App\Http\Controllers\DataIssueController;
 use App\Http\Controllers\FamilySelfServiceController;
 use App\Http\Controllers\MiniAppController;
+use App\Http\Controllers\PaymentWebhookController;
 use App\Http\Controllers\TelegramWebhookController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/telegram/webhook', TelegramWebhookController::class)
     ->name('telegram.webhook');
+Route::post('/payments/webhook/{provider}', PaymentWebhookController::class)
+    ->middleware('throttle:60,1')
+    ->where('provider', '[a-z0-9_-]+')
+    ->name('payments.webhook');
 
-Route::middleware(['web', 'family.tree', 'telegram.webapp'])->group(function (): void {
+Route::middleware(['web', 'telegram.webapp', 'family.tree'])->group(function (): void {
     Route::get('/family/tree', [MiniAppController::class, 'tree']);
     Route::get('/family/birthdays', [MiniAppController::class, 'birthdays']);
     Route::get('/family/gallery', [MiniAppController::class, 'gallery']);

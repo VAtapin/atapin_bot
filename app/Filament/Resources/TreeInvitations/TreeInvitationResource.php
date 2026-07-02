@@ -40,7 +40,16 @@ class TreeInvitationResource extends Resource
                 ->getOptionLabelFromRecordUsing(fn ($record): string => $record->full_name)
                 ->searchable(['first_name', 'last_name', 'middle_name']),
             Select::make('role')->label('Роль')
-                ->options(array_intersect_key(TreeMembership::ROLES, array_flip(['member', 'guest'])))
+                ->options(function (): array {
+                    $tree = app(CurrentTree::class)->get();
+                    $role = $tree ? auth()->user()?->roleInTree($tree) : null;
+                    $allowed = in_array($role, ['owner', 'super_admin'], true)
+                        || auth()->user()?->is_super_admin
+                        ? ['moderator', 'member', 'guest']
+                        : ['member', 'guest'];
+
+                    return array_intersect_key(TreeMembership::ROLES, array_flip($allowed));
+                })
                 ->required()->default('guest'),
             TextInput::make('max_uses')->label('Количество использований')->numeric()->minValue(1)->default(1)->required(),
             DateTimePicker::make('expires_at')->label('Действует до')->minDate(now()),

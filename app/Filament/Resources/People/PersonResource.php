@@ -21,7 +21,6 @@ use Filament\Actions\EditAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -57,6 +56,11 @@ class PersonResource extends Resource
     {
         return $schema
             ->components([
+                TextInput::make('_tree_context')
+                    ->label('Семейное дерево')
+                    ->default(fn (): string => app(CurrentTree::class)->get()?->name ?? '')
+                    ->disabled()
+                    ->dehydrated(false),
                 TextInput::make('first_name')
                     ->label('Имя')
                     ->required(),
@@ -102,13 +106,6 @@ class PersonResource extends Resource
                     ->label('Биография')
                     ->rows(6)
                     ->columnSpanFull(),
-                FileUpload::make('photo_path')
-                    ->label('Основная фотография (быстрая загрузка)')
-                    ->image()
-                    ->imageEditor()
-                    ->directory(fn (): string => 'trees/'.app(CurrentTree::class)->id().'/people/photos')
-                    ->disk('public')
-                    ->visibility('public'),
                 Toggle::make('is_published')
                     ->label('Показывать в семейном древе')
                     ->default(true)
@@ -122,20 +119,6 @@ class PersonResource extends Resource
                     ->label('ID в GEDCOM')
                     ->disabled()
                     ->dehydrated(false),
-                TextInput::make('login')
-                    ->label('Логин для сайта')
-                    ->unique(ignoreRecord: true)
-                    ->autocomplete(false),
-                TextInput::make('password')
-                    ->label('Новый пароль для сайта')
-                    ->password()
-                    ->revealable()
-                    ->autocomplete(false)
-                    ->afterStateHydrated(fn (TextInput $component) => $component->state(null))
-                    ->dehydrated(fn (?string $state): bool => filled($state)),
-                Toggle::make('web_login_enabled')
-                    ->label('Разрешить вход по логину и паролю')
-                    ->default(false),
             ]);
     }
 

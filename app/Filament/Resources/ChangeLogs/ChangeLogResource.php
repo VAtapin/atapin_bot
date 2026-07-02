@@ -6,6 +6,7 @@ use App\Filament\Resources\ChangeLogs\Pages\ListChangeLogs;
 use App\Models\ChangeLog;
 use App\Support\CurrentTree;
 use BackedEnum;
+use Filament\Facades\Filament;
 use Filament\Resources\Resource;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
@@ -39,7 +40,11 @@ class ChangeLogResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->where('tree_id', app(CurrentTree::class)->id());
+        $query = parent::getEloquentQuery();
+
+        return Filament::getCurrentPanel()?->getId() === 'admin'
+            ? $query
+            : $query->where('tree_id', app(CurrentTree::class)->id());
     }
 
     public static function canCreate(): bool

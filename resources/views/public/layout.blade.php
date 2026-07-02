@@ -30,8 +30,18 @@
         <nav>
             <a href="{{ route('public.page', 'about') }}">О проекте</a>
             <a href="{{ route('public.page', 'contacts') }}">Контакты</a>
-            <a class="button secondary" href="/admin/login">Войти</a>
-            <a class="button" href="{{ route('register') }}">Создать дерево</a>
+            @auth
+                <a class="button secondary" href="{{ route('trees.choose') }}">Мои деревья</a>
+                <form method="post" action="{{ route('logout') }}" style="display:inline">
+                    @csrf
+                    <button class="button" type="submit">Выйти</button>
+                </form>
+            @else
+                <a class="button secondary" href="{{ route('login') }}">Войти</a>
+                @if(\App\Models\PlatformSetting::value('registration_enabled', true))
+                    <a class="button" href="{{ route('register') }}">Создать дерево</a>
+                @endif
+            @endauth
         </nav>
     </header>
 </div>

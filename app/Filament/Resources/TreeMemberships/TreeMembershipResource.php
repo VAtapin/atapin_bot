@@ -5,12 +5,16 @@ namespace App\Filament\Resources\TreeMemberships;
 use App\Filament\Resources\TreeMemberships\Pages\CreateTreeMembership;
 use App\Filament\Resources\TreeMemberships\Pages\EditTreeMembership;
 use App\Filament\Resources\TreeMemberships\Pages\ListTreeMemberships;
+use App\Models\TelegramUser;
 use App\Models\TreeMembership;
+use App\Services\UserCredentialService;
 use App\Support\CurrentTree;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -77,7 +81,23 @@ class TreeMembershipResource extends Resource
                 ->formatStateUsing(fn (string $state): string => TreeMembership::ROLES[$state] ?? $state),
             TextColumn::make('status')->label('Доступ')->badge(),
             TextColumn::make('last_seen_at')->label('Активность')->dateTime('d.m.Y H:i'),
-        ])->recordActions([EditAction::make()]);
+        ])->recordActions([
+            Action::make('send_credentials')
+                ->label('Прислать логин и пароль')
+                ->icon(Heroicon::OutlinedPaperAirplane)
+                ->visible(fn (TreeMembership $record): bool => $record->status === 'approved'
+                    && TelegramUser::query()->where('user_id', $record->user_id)->exists()
+                    && static::canEdit($record))
+                ->requiresConfirmation()
+                ->action(function (TreeMembership $record): void {
+                    app(UserCredentialService::class)->issueAndSend($record->user, $record->tree);
+                    Notification::make()
+                        ->title('Новый логин и пароль отправлены пользователю в Telegram')
+                        ->success()
+                        ->send();
+                }),
+            EditAction::make(),
+        ]);
     }
 
     public static function getEloquentQuery(): Builder
@@ -108,6 +128,11 @@ class TreeMembershipResource extends Resource
 
         return $record->role !== 'owner'
             && ($actorRole === 'owner' || ($actorRole === 'moderator' && $record->role !== 'moderator'));
+    }
+
+    public static function canCreate(): bool
+    {
+        return (bool) auth()->user()?->is_super_admin;
     }
 
     public static function getPages(): array

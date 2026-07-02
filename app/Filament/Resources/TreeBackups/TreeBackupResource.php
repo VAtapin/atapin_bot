@@ -44,7 +44,10 @@ class TreeBackupResource extends Resource
                 ->requiresConfirmation()
                 ->modalDescription('Текущие данные дерева будут заменены выбранной резервной копией.')
                 ->visible(fn (TreeBackup $record): bool => $record->status === 'completed')
-                ->action(fn (TreeBackup $record) => app(TreeArchiveService::class)->restore($record)),
+                ->action(fn (TreeBackup $record) => app(TreeArchiveService::class)->restore(
+                    $record,
+                    auth()->user(),
+                )),
             DeleteAction::make(),
         ])->defaultSort('id', 'desc');
     }
@@ -61,12 +64,8 @@ class TreeBackupResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return (bool) (
-            auth()->user()?->is_super_admin
-            || auth()->user()?->memberships()
-                ->where('status', 'approved')
-                ->where('role', 'owner')
-                ->exists()
-        );
+        $tree = app(CurrentTree::class)->get();
+
+        return (bool) ($tree && auth()->user()?->ownsTree($tree));
     }
 }

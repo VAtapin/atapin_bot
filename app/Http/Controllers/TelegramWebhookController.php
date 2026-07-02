@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\FamilyEvent;
-use App\Models\FamilyTree;
 use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
@@ -11,15 +10,16 @@ use App\Models\Setting;
 use App\Models\TelegramGroup;
 use App\Models\TelegramUpdate;
 use App\Models\TelegramUser;
+use App\Models\TreeMembership;
 use App\Services\ExternalIdentityService;
 use App\Services\TelegramBot;
 use App\Services\TelegramWebLogin;
 use App\Services\TreeAccessService;
+use App\Services\UserCredentialService;
 use App\Support\CurrentTree;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Throwable;
 
 class TelegramWebhookController extends Controller
@@ -107,45 +107,68 @@ class TelegramWebhookController extends Controller
 
         $group = null;
         $tree = $user->currentTree;
+        $isGroupChat = in_array($chat['type'] ?? '', ['group', 'supergroup'], true);
 
-        if (in_array($chat['type'] ?? '', ['group', 'supergroup'], true)) {
+        if ($isGroupChat && $tree) {
             $group = TelegramGroup::query()->firstOrNew(['telegram_chat_id' => $chat['id']]);
-            $tree = $group->tree
-                ?: $tree
-                ?: FamilyTree::query()->where('status', 'active')->oldest('id')->first();
+            $tree = $group->tree ?: $tree;
             $group->fill([
-                'tree_id' => $tree?->id,
                 'title' => $chat['title'] ?? 'Семейная группа',
                 'last_seen_at' => now(),
-            ])->save();
+            ]);
+            if ($tree) {
+                $group->tree_id = $tree->id;
+            }
+            $group->save();
         }
 
-        $tree ??= FamilyTree::query()->where('status', 'active')->oldest('id')->first();
-        $this->currentTree->set($tree);
         $familyUser = $user->user ?: $this->identities->resolve('telegram', $user->telegram_user_id, [
             'username' => $user->username,
             'first_name' => $user->first_name,
             'last_name' => $user->last_name,
         ]);
-        $user->updateQuietly([
-            'user_id' => $familyUser->id,
-            'current_tree_id' => $tree?->id,
-        ]);
-        $membership = $this->treeAccess->membership($familyUser, $tree);
-        if ($membership->wasRecentlyCreated) {
-            $accessStatus = $user->status ?: 'pending';
-            $membership->update([
-                'person_id' => $user->person_id,
-                'role' => $user->is_bot_admin ? 'moderator' : ($user->person_id ? 'member' : 'guest'),
-                'status' => $accessStatus,
-                'approved_at' => $accessStatus === 'approved' ? now() : null,
-            ]);
-        }
+        $user->updateQuietly(['user_id' => $familyUser->id]);
 
         $text = trim((string) ($message['text'] ?? ''));
         [$rawCommand, $arguments] = array_pad(preg_split('/\s+/u', $text, 2), 2, '');
         $command = mb_strtolower($rawCommand);
         $command = preg_replace('/@[^ ]+$/', '', $command);
+
+        if (! $tree) {
+            if ($command === '/trees') {
+                $this->sendTreeSelector($chat['id'], $user);
+            } elseif ($command === '/start') {
+                $this->bot->sendMessage(
+                    $chat['id'],
+                    'Добро пожаловать в «Я и дом мой». Откройте семейное приглашение или выберите уже доступное дерево.',
+                );
+                $this->sendTreeSelector($chat['id'], $user);
+            } else {
+                $this->bot->sendMessage(
+                    $chat['id'],
+                    $isGroupChat
+                        ? 'Эта группа ещё не назначена семейному дереву.'
+                        : 'У вас не выбрано семейное дерево. Откройте приглашение или используйте /trees.',
+                );
+            }
+
+            return;
+        }
+
+        $this->currentTree->set($tree);
+        $user->updateQuietly(['current_tree_id' => $tree->id]);
+        $membership = $this->treeAccess->membership($familyUser, $tree);
+        if ($membership->wasRecentlyCreated) {
+            $accessStatus = config('services.telegram.auto_approve') || $isAdmin
+                ? 'approved'
+                : 'pending';
+            $membership->update([
+                'person_id' => $user->person_id,
+                'role' => $isAdmin ? 'moderator' : ($user->person_id ? 'member' : 'guest'),
+                'status' => $accessStatus,
+                'approved_at' => $accessStatus === 'approved' ? now() : null,
+            ]);
+        }
 
         if ($command === '/start' && $arguments === 'credentials') {
             $this->sendWebCredentials($chat['id'], $user);
@@ -182,7 +205,7 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        if (! $user->isApproved() && ! $isAdmin) {
+        if ($membership->status !== 'approved' && ! $isAdmin) {
             if (str_starts_with($command, '/')) {
                 $this->bot->sendMessage(
                     $chat['id'],
@@ -280,7 +303,19 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        if (! $isConfiguredAdmin && ! ($actor?->is_bot_admin && $actor->isApproved())) {
+        if (preg_match('/^membership:(approve|block|moderator|member):(\d+)$/', $data, $membershipMatch)) {
+            $this->handleMembershipCallback(
+                $callback,
+                $actor,
+                $isConfiguredAdmin,
+                $membershipMatch[1],
+                (int) $membershipMatch[2],
+            );
+
+            return;
+        }
+
+        if (! $isConfiguredAdmin && ! $actor?->user?->is_super_admin) {
             $this->answerAccessCallback($callback, 'Недостаточно прав.', true);
 
             return;
@@ -306,8 +341,8 @@ class TelegramWebhookController extends Controller
             'admin' => $user->update(['status' => 'approved', 'is_bot_admin' => true]),
             'unadmin' => $user->update(['is_bot_admin' => false]),
         };
-        $targetMembership = $user->user
-            ? $this->treeAccess->membership($user->user, $this->currentTree->resolveDefault())
+        $targetMembership = $user->user && $user->currentTree
+            ? $this->treeAccess->membership($user->user, $user->currentTree)
             : null;
         if ($targetMembership) {
             $targetMembership->update([
@@ -344,6 +379,117 @@ class TelegramWebhookController extends Controller
             } catch (Throwable $exception) {
                 report($exception);
             }
+        }
+    }
+
+    private function handleMembershipCallback(
+        array $callback,
+        ?TelegramUser $actor,
+        bool $isConfiguredAdmin,
+        string $action,
+        int $membershipId,
+    ): void {
+        $membership = TreeMembership::query()
+            ->with(['tree', 'user', 'person'])
+            ->find($membershipId);
+
+        if (! $membership) {
+            $this->answerAccessCallback($callback, 'Заявка уже удалена.', true);
+
+            return;
+        }
+
+        $actorUser = $actor?->user;
+        $actorRole = $actorUser?->memberships()
+            ->where('tree_id', $membership->tree_id)
+            ->where('status', 'approved')
+            ->value('role');
+        $canModerate = $isConfiguredAdmin
+            || (bool) $actorUser?->is_super_admin
+            || in_array($actorRole, ['owner', 'moderator'], true);
+        $canAssignModerator = $isConfiguredAdmin
+            || (bool) $actorUser?->is_super_admin
+            || $actorRole === 'owner';
+
+        if (! $canModerate || ($action === 'moderator' && ! $canAssignModerator)) {
+            $this->answerAccessCallback($callback, 'Недостаточно прав для этого дерева.', true);
+
+            return;
+        }
+
+        if ($membership->role === 'owner') {
+            $this->answerAccessCallback($callback, 'Статус владельца меняется только в панели платформы.', true);
+
+            return;
+        }
+
+        $changes = match ($action) {
+            'approve' => [
+                'status' => 'approved',
+                'approved_by_user_id' => $actorUser?->id,
+                'approved_at' => now(),
+            ],
+            'block' => [
+                'status' => 'blocked',
+                'approved_by_user_id' => $actorUser?->id,
+                'approved_at' => null,
+            ],
+            'moderator' => [
+                'status' => 'approved',
+                'role' => 'moderator',
+                'approved_by_user_id' => $actorUser?->id,
+                'approved_at' => $membership->approved_at ?: now(),
+            ],
+            default => [
+                'role' => 'member',
+            ],
+        };
+        $membership->update($changes);
+        TelegramUser::query()
+            ->where('user_id', $membership->user_id)
+            ->update([
+                'current_tree_id' => $membership->tree_id,
+                'person_id' => $membership->person_id,
+                'status' => $membership->status,
+            ]);
+        $this->currentTree->set($membership->tree);
+
+        $actionText = match ($action) {
+            'approve' => '✅ Доступ разрешён',
+            'block' => '⛔ Доступ заблокирован',
+            'moderator' => '🛡 Назначен модератором',
+            default => '👤 Назначен членом семьи',
+        };
+        $this->answerAccessCallback($callback, $actionText);
+
+        if (isset($callback['message']['chat']['id'], $callback['message']['message_id'])) {
+            $this->bot->request('editMessageText', [
+                'chat_id' => $callback['message']['chat']['id'],
+                'message_id' => $callback['message']['message_id'],
+                'text' => '👤 <b>'.e($membership->user->name)."</b>\n"
+                    .'🌳 '.e($membership->tree->name)."\n\n{$actionText}",
+                'parse_mode' => 'HTML',
+                'reply_markup' => [
+                    'inline_keyboard' => [
+                        [[
+                            'text' => $membership->status === 'approved'
+                                ? '⛔ Отключить доступ'
+                                : '✅ Разрешить доступ',
+                            'callback_data' => 'membership:'
+                                .($membership->status === 'approved' ? 'block' : 'approve')
+                                .':'.$membership->id,
+                        ]],
+                        [[
+                            'text' => $membership->role === 'moderator'
+                                ? '👤 Сделать членом семьи'
+                                : '🛡 Сделать модератором',
+                            'callback_data' => 'membership:'
+                                .($membership->role === 'moderator' ? 'member' : 'moderator')
+                                .':'.$membership->id,
+                        ]],
+                    ],
+                ],
+            ]);
         }
     }
 
@@ -503,7 +649,12 @@ class TelegramWebhookController extends Controller
 
     private function sendWebCredentials(int $chatId, TelegramUser $user): void
     {
-        if (! $user->isApproved()) {
+        $membership = $user->user?->memberships()
+            ->where('tree_id', $user->current_tree_id)
+            ->where('status', 'approved')
+            ->first();
+
+        if (! $membership) {
             $this->bot->sendMessage(
                 $chatId,
                 'Сначала администратор семьи должен разрешить вам доступ.',
@@ -523,7 +674,7 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        $person = $user->person;
+        $person = $membership->person;
 
         if (! $person) {
             $this->bot->sendMessage(
@@ -534,39 +685,17 @@ class TelegramWebhookController extends Controller
             return;
         }
 
-        $login = $person->login ?: $this->uniqueWebLogin($person, $user);
-        $password = Str::password(12, true, true, false, false);
-
-        $person->update([
-            'login' => $login,
-            'password' => $password,
-            'web_login_enabled' => true,
-        ]);
-        $websiteUrl = app(TelegramWebLogin::class)->createUrl($user);
-
-        $this->bot->sendMessage(
-            $user->telegram_user_id,
-            "🔐 <b>Доступ к семейному сайту</b>\n\n"
-            .'Логин: <code>'.e($login)."</code>\n"
-            .'Новый пароль: <code>'.e($password)."</code>\n\n"
-            .'Старый пароль больше не действует. Никому не пересылайте это сообщение.',
-            [
-                'protect_content' => true,
-                'reply_markup' => [
-                    'inline_keyboard' => [[
-                        [
-                            'text' => '🌐 Перейти на сайт',
-                            'url' => $websiteUrl,
-                        ],
-                    ]],
-                ],
-            ],
-        );
+        app(UserCredentialService::class)->issueAndSend($user->user, $membership->tree);
     }
 
     private function sendWebsiteLogin(int $chatId, TelegramUser $user): void
     {
-        if (! $user->isApproved()) {
+        $hasAccess = $user->user?->memberships()
+            ->where('tree_id', $user->current_tree_id)
+            ->where('status', 'approved')
+            ->exists();
+
+        if (! $hasAccess) {
             $this->bot->sendMessage(
                 $chatId,
                 'Сначала администратор семьи должен разрешить вам доступ.',
@@ -601,23 +730,6 @@ class TelegramWebhookController extends Controller
                 ],
             ],
         );
-    }
-
-    private function uniqueWebLogin(Person $person, TelegramUser $user): string
-    {
-        $base = Str::slug($person->first_name.' '.$person->last_name, '');
-        $base = $base !== ''
-            ? mb_substr($base, 0, 40)
-            : 'family'.$user->telegram_user_id;
-        $candidate = $base;
-        $suffix = 0;
-
-        while (Person::query()->where('login', $candidate)->whereKeyNot($person->id)->exists()) {
-            $suffix++;
-            $candidate = $base.$suffix;
-        }
-
-        return $candidate;
     }
 
     private function sendPrivateBotButton(

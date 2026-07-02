@@ -14,6 +14,11 @@ class CurrentTree
         $this->tree = $tree;
     }
 
+    public function clear(): void
+    {
+        $this->tree = null;
+    }
+
     public function get(): ?FamilyTree
     {
         return $this->tree;
@@ -30,16 +35,26 @@ class CurrentTree
             return $this->tree;
         }
 
-        if ($user && ! $user->is_super_admin) {
-            $this->tree = $user->trees()
+        if (! $user || $user->is_super_admin) {
+            return null;
+        }
+
+        if ($user->last_tree_id) {
+            $lastTree = $user->trees()
+                ->whereKey($user->last_tree_id)
                 ->wherePivot('status', 'approved')
                 ->where('family_trees.status', 'active')
                 ->first();
+
+            if ($lastTree) {
+                return $this->tree = $lastTree;
+            }
         }
 
-        return $this->tree ??= FamilyTree::query()
-            ->where('status', 'active')
-            ->oldest('id')
+        return $this->tree = $user->trees()
+            ->wherePivot('status', 'approved')
+            ->where('family_trees.status', 'active')
+            ->orderBy('family_trees.id')
             ->first();
     }
 }

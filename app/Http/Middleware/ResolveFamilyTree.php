@@ -15,7 +15,10 @@ class ResolveFamilyTree
     public function handle(Request $request, Closure $next): Response
     {
         $routeTree = $request->route('tree');
-        $tree = $routeTree instanceof FamilyTree ? $routeTree : null;
+        $tree = $request->attributes->get('familyTree');
+        $tree = $tree instanceof FamilyTree
+            ? $tree
+            : ($routeTree instanceof FamilyTree ? $routeTree : null);
 
         $treeId = (int) $request->header('X-Family-Tree-ID');
         $treeSlug = (string) (

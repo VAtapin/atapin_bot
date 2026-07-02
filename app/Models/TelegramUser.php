@@ -36,6 +36,13 @@ class TelegramUser extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::creating(function (TelegramUser $user): void {
+            $user->current_tree_id ??= app(CurrentTree::class)->id();
+        });
+    }
+
     public function person(): BelongsTo
     {
         return $this->belongsTo(Person::class);

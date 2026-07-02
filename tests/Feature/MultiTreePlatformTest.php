@@ -36,7 +36,7 @@ class MultiTreePlatformTest extends TestCase
             'password_confirmation' => 'very-secret-password',
             'tree_name' => 'Семья Ивановых',
             'tree_slug' => 'ivanovy',
-        ])->assertRedirect('/admin');
+        ])->assertRedirect('/manage/ivanovy');
 
         $tree = FamilyTree::query()->where('slug', 'ivanovy')->firstOrFail();
         $this->assertSame('Семья Ивановых', $tree->name);
@@ -46,6 +46,11 @@ class MultiTreePlatformTest extends TestCase
             'role' => 'owner',
             'status' => 'approved',
         ]);
+        $this->assertDatabaseHas('subscriptions', [
+            'tree_id' => $tree->id,
+            'status' => 'trial',
+        ]);
+        $this->assertTrue($tree->owner->two_factor_enabled);
     }
 
     public function test_tree_header_strictly_isolates_people(): void
@@ -58,14 +63,22 @@ class MultiTreePlatformTest extends TestCase
             'plan_id' => Plan::query()->first()->id,
         ]);
         $first = Person::factory()->create(['tree_id' => $defaultTree->id, 'first_name' => 'Первый']);
+        app(CurrentTree::class)->set($secondTree);
         $second = Person::factory()->create([
             'tree_id' => $secondTree->id,
             'first_name' => 'Второй',
-            'web_login_enabled' => true,
+        ]);
+        $user = User::factory()->create();
+        TreeMembership::query()->create([
+            'tree_id' => $secondTree->id,
+            'user_id' => $user->id,
+            'person_id' => $second->id,
+            'role' => 'member',
+            'status' => 'approved',
         ]);
 
         $this->withSession([
-            'family_person_id' => $second->id,
+            'family_user_id' => $user->id,
             'family_tree_id' => $secondTree->id,
         ])->withHeader('X-Family-Tree-ID', $secondTree->id)
             ->getJson('/api/family/tree?scope=all')
@@ -98,9 +111,17 @@ class MultiTreePlatformTest extends TestCase
 
     public function test_issue_button_creates_single_tree_issue(): void
     {
-        $person = Person::factory()->create(['web_login_enabled' => true]);
+        $person = Person::factory()->create();
+        $user = User::factory()->create();
+        TreeMembership::query()->create([
+            'tree_id' => $person->tree_id,
+            'user_id' => $user->id,
+            'person_id' => $person->id,
+            'role' => 'member',
+            'status' => 'approved',
+        ]);
 
-        $this->withSession(['family_person_id' => $person->id])
+        $this->withSession(['family_user_id' => $user->id, 'family_tree_id' => $person->tree_id])
             ->postJson('/api/family/issues', [
                 'subject' => 'Неверная дата',
                 'description' => 'Проверьте год рождения.',
@@ -177,15 +198,24 @@ class MultiTreePlatformTest extends TestCase
 
         foreach ([
             '/admin/family-trees',
-            '/admin/tree-memberships',
-            '/admin/tree-invitations',
-            '/admin/data-issues',
             '/admin/change-logs',
-            '/admin/tree-backups',
-            '/admin/tree-imports',
             '/admin/cms-pages',
             '/admin/plans',
             '/admin/subscriptions',
+            '/admin/payments',
+            '/admin/users',
+        ] as $url) {
+            $this->actingAs($admin)->get($url)->assertOk();
+        }
+
+        $tree = FamilyTree::query()->firstOrFail();
+        foreach ([
+            "/manage/{$tree->slug}/people",
+            "/manage/{$tree->slug}/tree-memberships",
+            "/manage/{$tree->slug}/tree-invitations",
+            "/manage/{$tree->slug}/data-issues",
+            "/manage/{$tree->slug}/tree-backups",
+            "/manage/{$tree->slug}/tree-imports",
         ] as $url) {
             $this->actingAs($admin)->get($url)->assertOk();
         }
@@ -246,6 +276,7 @@ class MultiTreePlatformTest extends TestCase
             'format' => 'csv',
             'status' => 'pending',
             'path' => 'tree-imports/1/family.csv',
+            'original_name' => 'family.csv',
         ]);
 
         $result = app(TreeImportService::class)->process($import);
@@ -278,12 +309,14 @@ class MultiTreePlatformTest extends TestCase
         ]);
 
         $this->assertTrue($owner->fresh()->memberships()->where('role', 'owner')->exists());
-        $this->assertTrue($owner->fresh()->canAccessPanel(Filament::getPanel('admin')));
+        $this->assertFalse($owner->fresh()->canAccessPanel(Filament::getPanel('admin')));
+        $this->assertTrue($owner->fresh()->canAccessPanel(Filament::getPanel('tree')));
         $this->actingAs($owner);
+        app(CurrentTree::class)->set($tree);
         $this->assertTrue(TreeImportResource::canViewAny());
-        $this->get('/admin/people')->assertOk();
-        $this->get('/admin/tree-imports')->assertOk();
-        $this->actingAs($moderator)->get('/admin/people')->assertOk();
-        $this->actingAs($moderator)->get('/admin/tree-imports')->assertForbidden();
+        $this->get("/manage/{$tree->slug}/people")->assertOk();
+        $this->get("/manage/{$tree->slug}/tree-imports")->assertOk();
+        $this->actingAs($moderator)->get("/manage/{$tree->slug}/people")->assertOk();
+        $this->actingAs($moderator)->get("/manage/{$tree->slug}/tree-imports")->assertForbidden();
     }
 }

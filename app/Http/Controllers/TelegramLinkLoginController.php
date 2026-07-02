@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FamilyTree;
 use App\Models\TelegramLoginToken;
+use App\Services\AuthRedirector;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,6 +46,12 @@ class TelegramLinkLoginController extends Controller
         }
         $loginToken->telegramUser->updateQuietly(['last_web_login_at' => now()]);
 
-        return redirect()->route('family.app');
+        $tree = $loginToken->telegramUser->current_tree_id
+            ? FamilyTree::query()->find($loginToken->telegramUser->current_tree_id)
+            : null;
+
+        return $loginToken->telegramUser->user
+            ? app(AuthRedirector::class)->redirect($loginToken->telegramUser->user, $tree)
+            : redirect()->route('access.pending', ['tree' => $tree?->slug]);
     }
 }

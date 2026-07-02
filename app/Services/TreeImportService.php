@@ -20,12 +20,18 @@ class TreeImportService
 
         try {
             $path = Storage::disk('local')->path($import->path);
+            app(ImportFileValidator::class)->validate(
+                $import->format,
+                $path,
+                $import->original_name,
+            );
             $statistics = match ($import->format) {
                 'gedcom' => $this->gedcom($import, $path),
                 'csv' => $this->csv($import, $path),
                 'gramps' => $this->gramps($import, $path),
                 default => throw new RuntimeException('Неизвестный формат импорта.'),
             };
+            app(TreeStorageService::class)->recalculate($import->tree);
             $import->update([
                 'status' => 'completed',
                 'statistics' => $statistics,
@@ -62,22 +68,29 @@ class TreeImportService
 
     private function csv(TreeImport $import, string $path): array
     {
-        if ($import->replace_existing) {
-            Person::query()->delete();
-        }
-
         $handle = fopen($path, 'rb');
         if (! $handle) {
             throw new RuntimeException('Не удалось открыть CSV.');
         }
+        $firstLine = fgets($handle);
+        if ($firstLine === false) {
+            fclose($handle);
+            throw new RuntimeException('CSV не содержит строку заголовков.');
+        }
+        $separator = substr_count($firstLine, ';') > substr_count($firstLine, ',') ? ';' : ',';
+        rewind($handle);
         $headers = array_map(
             fn (string $header): string => mb_strtolower(trim($header)),
-            fgetcsv($handle, separator: ',') ?: [],
+            fgetcsv($handle, separator: $separator) ?: [],
         );
         $count = 0;
 
-        DB::transaction(function () use ($handle, $headers, &$count): void {
-            while (($row = fgetcsv($handle, separator: ',')) !== false) {
+        DB::transaction(function () use ($import, $handle, $headers, $separator, &$count): void {
+            if ($import->replace_existing) {
+                Person::query()->delete();
+            }
+
+            while (($row = fgetcsv($handle, separator: $separator)) !== false) {
                 $data = array_combine($headers, array_pad($row, count($headers), null));
                 if (! $data || blank($data['first_name'] ?? null)) {
                     continue;
@@ -106,35 +119,49 @@ class TreeImportService
 
     private function gramps(TreeImport $import, string $path): array
     {
-        $xml = simplexml_load_file($path);
+        $source = mb_strtolower(pathinfo($import->original_name ?: $path, PATHINFO_EXTENSION)) === 'gramps'
+            ? 'compress.zlib://'.$path
+            : $path;
+        $previousErrors = libxml_use_internal_errors(true);
+        $xml = simplexml_load_file(
+            $source,
+            \SimpleXMLElement::class,
+            LIBXML_NONET | LIBXML_NOCDATA,
+        );
+        libxml_clear_errors();
+        libxml_use_internal_errors($previousErrors);
+
         if (! $xml) {
             throw new RuntimeException('Некорректный файл Gramps XML.');
         }
-        if ($import->replace_existing) {
-            Person::query()->delete();
-        }
 
         $count = 0;
-        foreach ($xml->people->person ?? [] as $node) {
-            $name = $node->name[0] ?? null;
-            $firstName = trim((string) ($name->first ?? ''));
-            $lastName = trim((string) ($name->surname ?? ''));
-            if ($firstName === '' && $lastName === '') {
-                continue;
+        DB::transaction(function () use ($import, $xml, &$count): void {
+            if ($import->replace_existing) {
+                Person::query()->delete();
             }
-            Person::query()->create([
-                'first_name' => $firstName ?: '?',
-                'last_name' => $lastName,
-                'gender' => match (mb_strtoupper((string) ($node->gender ?? ''))) {
-                    'M' => 'male',
-                    'F' => 'female',
-                    default => 'unknown',
-                },
-                'gedcom_id' => (string) ($node['id'] ?? $node['handle'] ?? ''),
-                'is_published' => true,
-            ]);
-            $count++;
-        }
+
+            foreach ($xml->people->person ?? [] as $node) {
+                $name = $node->name[0] ?? null;
+                $firstName = trim((string) ($name->first ?? ''));
+                $lastName = trim((string) ($name->surname ?? ''));
+                if ($firstName === '' && $lastName === '') {
+                    continue;
+                }
+                Person::query()->create([
+                    'first_name' => $firstName ?: '?',
+                    'last_name' => $lastName,
+                    'gender' => match (mb_strtoupper((string) ($node->gender ?? ''))) {
+                        'M' => 'male',
+                        'F' => 'female',
+                        default => 'unknown',
+                    },
+                    'gedcom_id' => (string) ($node['id'] ?? $node['handle'] ?? ''),
+                    'is_published' => true,
+                ]);
+                $count++;
+            }
+        });
 
         return ['people' => $count];
     }

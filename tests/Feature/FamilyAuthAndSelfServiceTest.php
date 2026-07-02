@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Person;
 use App\Models\PersonPhoto;
+use App\Models\TreeMembership;
+use App\Models\User;
+use App\Support\CurrentTree;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -15,20 +18,28 @@ class FamilyAuthAndSelfServiceTest extends TestCase
 
     public function test_person_can_log_in_with_login_and_password(): void
     {
-        $person = Person::factory()->create([
+        $person = Person::factory()->create();
+        $user = User::factory()->create([
             'login' => 'family-member',
             'password' => 'secret-password',
-            'web_login_enabled' => true,
+        ]);
+        TreeMembership::query()->create([
+            'tree_id' => app(CurrentTree::class)->id(),
+            'user_id' => $user->id,
+            'person_id' => $person->id,
+            'role' => 'member',
+            'status' => 'approved',
         ]);
 
-        $this->post('/family/login', [
+        $this->post('/login', [
             'login' => 'family-member',
             'password' => 'secret-password',
+            'tree_slug' => 'test-family',
         ])
-            ->assertRedirect('/family')
-            ->assertSessionHas('family_person_id', $person->id);
+            ->assertRedirect('/family/test-family')
+            ->assertSessionHas('family_user_id', $user->id);
 
-        $this->withSession(['family_person_id' => $person->id])
+        $this->withSession(['family_user_id' => $user->id, 'family_tree_id' => app(CurrentTree::class)->id()])
             ->getJson('/api/family/me')
             ->assertOk()
             ->assertJsonPath('person.name', $person->full_name);
@@ -52,8 +63,19 @@ class FamilyAuthAndSelfServiceTest extends TestCase
     public function test_person_can_edit_profile_add_child_album_and_photo(): void
     {
         Storage::fake('public');
-        $person = Person::factory()->create(['web_login_enabled' => true]);
-        $session = ['family_person_id' => $person->id];
+        $person = Person::factory()->create();
+        $user = User::factory()->create();
+        TreeMembership::query()->create([
+            'tree_id' => app(CurrentTree::class)->id(),
+            'user_id' => $user->id,
+            'person_id' => $person->id,
+            'role' => 'member',
+            'status' => 'approved',
+        ]);
+        $session = [
+            'family_user_id' => $user->id,
+            'family_tree_id' => app(CurrentTree::class)->id(),
+        ];
 
         $this->withSession($session)
             ->putJson('/api/family/me', ['current_city' => 'Берлин'])

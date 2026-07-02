@@ -2,23 +2,20 @@
 
 namespace App\Models;
 
-use App\Support\CurrentTree;
+use App\Models\Concerns\BelongsToTree;
+use App\Models\Concerns\RecordsChanges;
 use Illuminate\Database\Eloquent\Model;
 
 class Setting extends Model
 {
+    use BelongsToTree;
+    use RecordsChanges;
+
     protected $fillable = ['tree_id', 'key', 'value', 'type', 'label', 'description'];
 
     public static function value(string $key, mixed $default = null): mixed
     {
-        $treeId = app(CurrentTree::class)->id();
-        $setting = static::query()
-            ->where('key', $key)
-            ->when($treeId, fn ($query) => $query->where(
-                fn ($query) => $query->where('tree_id', $treeId)->orWhereNull('tree_id'),
-            ))
-            ->orderByRaw('tree_id is null')
-            ->first();
+        $setting = static::query()->where('key', $key)->first();
 
         if (! $setting) {
             return $default;

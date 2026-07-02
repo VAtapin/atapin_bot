@@ -7,8 +7,6 @@ use App\Filament\Resources\Users\Pages\EditUser;
 use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Models\User;
 use BackedEnum;
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -28,11 +26,11 @@ class UserResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
-    protected static ?string $modelLabel = 'администратор';
+    protected static ?string $modelLabel = 'пользователь';
 
-    protected static ?string $pluralModelLabel = 'Администраторы';
+    protected static ?string $pluralModelLabel = 'Пользователи';
 
-    protected static ?string $navigationLabel = 'Администраторы';
+    protected static ?string $navigationLabel = 'Пользователи';
 
     public static function form(Schema $schema): Schema
     {
@@ -44,7 +42,11 @@ class UserResource extends Resource
                 TextInput::make('email')
                     ->label('Email')
                     ->email()
+                    ->unique(ignoreRecord: true)
                     ->required(),
+                TextInput::make('login')
+                    ->label('Личный логин')
+                    ->unique(ignoreRecord: true),
                 TextInput::make('password')
                     ->label('Пароль')
                     ->password()
@@ -97,11 +99,6 @@ class UserResource extends Resource
             ])
             ->recordActions([
                 EditAction::make(),
-            ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
-                ]),
             ]);
     }
 
@@ -123,7 +120,7 @@ class UserResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return (bool) auth()->user();
+        return (bool) auth()->user()?->is_super_admin;
     }
 
     public static function getEloquentQuery(): Builder
@@ -143,5 +140,18 @@ class UserResource extends Resource
     public static function canEdit($record): bool
     {
         return (bool) (auth()->user()?->is_super_admin || $record->id === auth()->id());
+    }
+
+    public static function canDelete($record): bool
+    {
+        if (! auth()->user()?->is_super_admin || $record->id === auth()->id()) {
+            return false;
+        }
+
+        if ($record->is_super_admin && User::query()->where('is_super_admin', true)->count() <= 1) {
+            return false;
+        }
+
+        return ! $record->memberships()->where('role', 'owner')->exists();
     }
 }

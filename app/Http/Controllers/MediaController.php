@@ -9,8 +9,9 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class MediaController extends Controller
 {
-    public function photo(PersonPhoto $photo): BinaryFileResponse
+    public function photo(int|string $photo): BinaryFileResponse
     {
+        $photo = PersonPhoto::withoutGlobalScope('family_tree')->findOrFail($photo);
         abort_unless($photo->path && Storage::disk('public')->exists($photo->path), 404);
 
         return response()->file(Storage::disk('public')->path($photo->path), [
@@ -19,8 +20,9 @@ class MediaController extends Controller
         ]);
     }
 
-    public function person(Person $person): BinaryFileResponse
+    public function person(int|string $person): BinaryFileResponse
     {
+        $person = Person::withoutGlobalScope('family_tree')->findOrFail($person);
         abort_unless($person->photo_path && Storage::disk('public')->exists($person->photo_path), 404);
 
         return response()->file(Storage::disk('public')->path($person->photo_path), [

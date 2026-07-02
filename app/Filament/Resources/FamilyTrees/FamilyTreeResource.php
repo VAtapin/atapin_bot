@@ -35,7 +35,12 @@ class FamilyTreeResource extends Resource
     {
         return $schema->components([
             TextInput::make('name')->label('Название')->required(),
-            TextInput::make('slug')->label('Адрес')->required()->alphaDash()->unique(ignoreRecord: true),
+            TextInput::make('slug')
+                ->label('Адрес')
+                ->required()
+                ->alphaDash()
+                ->rules(['ascii', 'not_in:person,login,register,admin,manage,api'])
+                ->unique(ignoreRecord: true),
             TextInput::make('subtitle')->label('Подзаголовок'),
             Select::make('owner_user_id')
                 ->label('Владелец')
@@ -81,7 +86,7 @@ class FamilyTreeResource extends Resource
             Action::make('select')
                 ->label('Открыть управление')
                 ->icon(Heroicon::OutlinedArrowRight)
-                ->url(fn (FamilyTree $record): string => '/admin?tree='.$record->id),
+                ->url(fn (FamilyTree $record): string => '/manage/'.$record->slug),
             Action::make('open')
                 ->label('Открыть сайт')
                 ->url(fn (FamilyTree $record): string => route('family.tree', $record))

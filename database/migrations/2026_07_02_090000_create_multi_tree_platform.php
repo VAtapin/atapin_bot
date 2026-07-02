@@ -71,22 +71,36 @@ return new class extends Migration
         });
 
         $ownerId = DB::table('users')->orderBy('id')->value('id');
-        $familyName = DB::table('settings')->where('key', 'family_name')->value('value')
-            ?: 'Семья Атапиных';
-        $treeId = DB::table('family_trees')->insertGetId([
-            'owner_user_id' => $ownerId,
-            'plan_id' => $planId,
-            'name' => $familyName,
-            'slug' => 'atapiny',
-            'subtitle' => 'Семейная история и память рода',
-            'status' => 'active',
-            'locale' => 'ru',
-            'timezone' => 'Europe/Berlin',
-            'settings' => json_encode(['is_legacy_tree' => true], JSON_UNESCAPED_UNICODE),
-            'last_activity_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $hasLegacyFamilyData = collect([
+            'people',
+            'parent_children',
+            'partnerships',
+            'family_events',
+            'photo_albums',
+            'person_photos',
+            'telegram_groups',
+            'telegram_users',
+        ])->contains(fn (string $table): bool => DB::table($table)->exists());
+        $treeId = null;
+
+        if ($hasLegacyFamilyData) {
+            $familyName = DB::table('settings')->where('key', 'family_name')->value('value')
+                ?: 'Импортированное семейное дерево';
+            $treeId = DB::table('family_trees')->insertGetId([
+                'owner_user_id' => $ownerId,
+                'plan_id' => $planId,
+                'name' => $familyName,
+                'slug' => 'legacy-tree',
+                'subtitle' => 'Семейная история и память рода',
+                'status' => 'active',
+                'locale' => 'ru',
+                'timezone' => 'Europe/Berlin',
+                'settings' => json_encode(['is_legacy_tree' => true], JSON_UNESCAPED_UNICODE),
+                'last_activity_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         foreach ([
             'people',
@@ -107,7 +121,9 @@ return new class extends Migration
                     ->cascadeOnDelete();
             });
 
-            DB::table($tableName)->update(['tree_id' => $treeId]);
+            if ($treeId) {
+                DB::table($tableName)->update(['tree_id' => $treeId]);
+            }
         }
 
         Schema::table('people', function (Blueprint $table): void {
@@ -151,7 +167,7 @@ return new class extends Migration
             $table->unique(['tree_id', 'user_id']);
         });
 
-        if ($ownerId) {
+        if ($ownerId && $treeId) {
             DB::table('tree_memberships')->insert([
                 'tree_id' => $treeId,
                 'user_id' => $ownerId,
@@ -164,7 +180,7 @@ return new class extends Migration
             ]);
         }
 
-        foreach (DB::table('telegram_users')->orderBy('id')->get() as $telegramUser) {
+        foreach ($treeId ? DB::table('telegram_users')->orderBy('id')->get() : [] as $telegramUser) {
             $userId = DB::table('users')->insertGetId([
                 'name' => trim(($telegramUser->first_name ?? '').' '.($telegramUser->last_name ?? ''))
                     ?: ($telegramUser->username ? '@'.$telegramUser->username : 'Участник семьи'),
@@ -344,16 +360,18 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        DB::table('subscriptions')->insert([
-            'tree_id' => $treeId,
-            'plan_id' => $planId,
-            'status' => 'active',
-            'amount' => 0,
-            'currency' => 'EUR',
-            'starts_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        if ($treeId) {
+            DB::table('subscriptions')->insert([
+                'tree_id' => $treeId,
+                'plan_id' => $planId,
+                'status' => 'active',
+                'amount' => 0,
+                'currency' => 'EUR',
+                'starts_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     public function down(): void

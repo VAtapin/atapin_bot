@@ -13,7 +13,6 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\DateTimePicker;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
@@ -42,13 +41,11 @@ class TelegramGroupResource extends Resource
     {
         return $schema
             ->components([
-                Select::make('tree_id')
+                TextInput::make('_tree_context')
                     ->label('Семейное дерево')
-                    ->relationship('tree', 'name')
-                    ->default(fn (): ?int => app(CurrentTree::class)->id())
-                    ->disabled(fn (): bool => ! auth()->user()?->is_super_admin)
-                    ->dehydrated()
-                    ->required(),
+                    ->default(fn (): string => app(CurrentTree::class)->get()?->name ?? '')
+                    ->disabled()
+                    ->dehydrated(false),
                 TextInput::make('telegram_chat_id')
                     ->label('ID чата Telegram')
                     ->required()

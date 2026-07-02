@@ -37,7 +37,7 @@ return [
 
     'telegram' => [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
-        'bot_username' => env('TELEGRAM_BOT_USERNAME', 'atapin_bot'),
+        'bot_username' => env('TELEGRAM_BOT_USERNAME'),
         'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
         'mini_app_url' => env('TELEGRAM_MINI_APP_URL', env('APP_URL').'/family'),
         'auto_approve' => env('TELEGRAM_AUTO_APPROVE', false),
@@ -58,6 +58,10 @@ return [
         'app_id' => env('VK_APP_ID'),
         'app_secret' => env('VK_APP_SECRET'),
         'mini_app_url' => env('VK_MINI_APP_URL', env('APP_URL').'/family'),
+    ],
+
+    'billing' => [
+        'webhook_secret' => env('BILLING_WEBHOOK_SECRET'),
     ],
 
 ];

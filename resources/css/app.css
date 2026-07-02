@@ -294,6 +294,32 @@ button { cursor: pointer; }
     background: transparent;
     cursor: zoom-in;
 }
+.person-photo-wrap,
+.person-avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+.person-photo-wrap.is-deceased::after,
+.person-avatar-wrap.is-deceased::after {
+    content: "";
+    position: absolute;
+    right: -1px;
+    bottom: 5px;
+    width: 34px;
+    height: 9px;
+    background: #171717;
+    transform: rotate(-45deg);
+    transform-origin: center;
+    pointer-events: none;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+}
+.person-avatar-wrap.is-deceased::after {
+    right: -3px;
+    bottom: 4px;
+    width: 23px;
+    height: 7px;
+}
 .person-photo { width: 74px; height: 74px; object-fit: cover; border-radius: 50%; border: 2px solid var(--line); }
 .person-photo--empty { display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); font: 700 30px Georgia, serif; }
 .person-facts { margin: 20px 0; }

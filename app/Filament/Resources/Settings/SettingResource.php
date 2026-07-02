@@ -6,6 +6,7 @@ use App\Filament\Resources\Settings\Pages\CreateSetting;
 use App\Filament\Resources\Settings\Pages\EditSetting;
 use App\Filament\Resources\Settings\Pages\ListSettings;
 use App\Models\Setting;
+use App\Support\CurrentTree;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -116,6 +117,8 @@ class SettingResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return (bool) auth()->user()?->is_super_admin;
+        $tree = app(CurrentTree::class)->get();
+
+        return (bool) ($tree && auth()->user()?->ownsTree($tree));
     }
 }

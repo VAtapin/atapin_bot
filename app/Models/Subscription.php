@@ -13,10 +13,13 @@ class Subscription extends Model
         'status',
         'provider',
         'provider_reference',
+        'provider_customer_reference',
         'amount',
         'currency',
         'starts_at',
         'ends_at',
+        'next_billing_at',
+        'grace_ends_at',
         'cancelled_at',
     ];
 
@@ -26,6 +29,8 @@ class Subscription extends Model
             'amount' => 'decimal:2',
             'starts_at' => 'datetime',
             'ends_at' => 'datetime',
+            'next_billing_at' => 'datetime',
+            'grace_ends_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];
     }
@@ -38,5 +43,10 @@ class Subscription extends Model
     public function plan(): BelongsTo
     {
         return $this->belongsTo(Plan::class);
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
     }
 }

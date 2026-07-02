@@ -2,15 +2,18 @@
 
 namespace App\Filament\Resources\TreeImports;
 
+use App\Filament\Components\ImportFileUpload;
 use App\Filament\Resources\TreeImports\Pages\CreateTreeImport;
 use App\Filament\Resources\TreeImports\Pages\ListTreeImports;
 use App\Models\TreeImport;
+use App\Rules\SafeImportFile;
+use App\Services\ImportFileValidator;
 use App\Support\CurrentTree;
 use BackedEnum;
-use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
@@ -34,20 +37,25 @@ class TreeImportResource extends Resource
         return $schema->components([
             Select::make('format')->label('Формат')->options([
                 'gedcom' => 'GEDCOM',
-                'gramps' => 'Gramps XML',
+                'gramps' => 'Gramps (.gramps или XML)',
                 'csv' => 'CSV',
-            ])->required(),
-            FileUpload::make('path')
+            ])->required()->live(),
+            ImportFileUpload::make('path')
                 ->label('Файл')
                 ->disk('local')
                 ->directory(fn (): string => 'tree-imports/'.app(CurrentTree::class)->id())
-                ->acceptedFileTypes([
-                    'application/octet-stream',
-                    'text/plain',
-                    'text/csv',
-                    'application/xml',
-                    'text/xml',
-                ])
+                ->acceptedExtensions(fn (Get $get): array => array_map(
+                    fn (string $extension): string => '.'.$extension,
+                    ImportFileValidator::EXTENSIONS[$get('format')] ?? [],
+                ))
+                ->rule(fn (Get $get): SafeImportFile => new SafeImportFile((string) $get('format')))
+                ->storeFileNamesIn('original_name')
+                ->helperText(fn (Get $get): string => match ($get('format')) {
+                    'gedcom' => 'Разрешены только текстовые файлы .ged и .gedcom',
+                    'gramps' => 'Разрешены архив Gramps .gramps (gzip) и несжатый .xml',
+                    'csv' => 'Разрешены только текстовые файлы .csv',
+                    default => 'Сначала выберите формат.',
+                })
                 ->maxSize(102400)
                 ->required(),
             Toggle::make('replace_existing')
@@ -85,12 +93,8 @@ class TreeImportResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return (bool) (
-            auth()->user()?->is_super_admin
-            || auth()->user()?->memberships()
-                ->where('status', 'approved')
-                ->where('role', 'owner')
-                ->exists()
-        );
+        $tree = app(CurrentTree::class)->get();
+
+        return (bool) ($tree && auth()->user()?->ownsTree($tree));
     }
 }

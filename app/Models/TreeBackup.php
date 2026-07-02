@@ -41,4 +41,9 @@ class TreeBackup extends Model
     {
         return $this->belongsTo(FamilyTree::class, 'tree_id');
     }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
 }

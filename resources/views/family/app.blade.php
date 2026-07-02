@@ -129,12 +129,17 @@
             <span class="brand-mark">🌳</span>
             <h2>Вход в семейный архив</h2>
             <p>Используйте Telegram или личный логин, выданный администратором.</p>
-            <a id="telegram-login-link" class="telegram-login" href="{{ route('telegram.login') }}">
+            <a id="telegram-login-link"
+               class="telegram-login"
+               href="{{ $familyAppConfig['telegramLoginUrl'] ?? '#' }}"
+               @if(empty($familyAppConfig['telegramLoginUrl'])) hidden @endif>
                 Войти через Telegram
             </a>
             <div class="auth-divider"><span>или</span></div>
-            <form method="post" action="{{ route('family.login') }}" class="auth-form">
+            <form method="post" action="{{ route('login.store') }}" class="auth-form">
                 @csrf
+                <input name="tree_slug" type="hidden" value="{{ $familyAppConfig['treeSlug'] }}">
+                <input name="return_to" type="hidden" value="{{ '/'.ltrim(request()->getRequestUri(), '/') }}">
                 <label>
                     <span>Логин</span>
                     <input name="login" value="{{ old('login') }}" autocomplete="username" required>

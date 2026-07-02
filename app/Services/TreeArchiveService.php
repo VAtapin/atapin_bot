@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ChangeLog;
 use App\Models\FamilyTree;
 use App\Models\TreeBackup;
 use App\Models\User;
@@ -45,7 +46,7 @@ class TreeArchiveService
                 $snapshot['tables'][$table] = DB::table($table)
                     ->where('tree_id', $tree->id)
                     ->get()
-                    ->map(fn ($row): array => (array) $row)
+                    ->map(fn ($row): array => $this->sanitiseRecord($table, (array) $row))
                     ->all();
             }
 
@@ -85,9 +86,12 @@ class TreeArchiveService
         return $backup->fresh();
     }
 
-    public function restore(TreeBackup $backup): void
+    public function restore(TreeBackup $backup, ?User $actor = null): void
     {
         abort_unless($backup->status === 'completed' && $backup->path, 422, 'Резервная копия не готова.');
+        $tree = $backup->tree;
+        $safetyBackup = $this->create($tree, $actor, 'before_restore');
+        abort_unless($safetyBackup->status === 'completed', 500, 'Не удалось создать страховочную копию.');
         $snapshot = json_decode(
             Storage::disk('local')->get($backup->path),
             true,
@@ -114,6 +118,16 @@ class TreeArchiveService
                 );
             }
         }
+
+        app(TreeStorageService::class)->recalculate($tree);
+        ChangeLog::query()->create([
+            'tree_id' => $tree->id,
+            'user_id' => $actor?->id,
+            'action' => 'backup_restored',
+            'subject_type' => TreeBackup::class,
+            'subject_id' => $backup->id,
+            'after' => ['safety_backup_id' => $safetyBackup->id],
+        ]);
     }
 
     public function export(FamilyTree $tree): array
@@ -130,10 +144,19 @@ class TreeArchiveService
             $data['tables'][$table] = DB::table($table)
                 ->where('tree_id', $tree->id)
                 ->get()
-                ->map(fn ($row): array => (array) $row)
+                ->map(fn ($row): array => $this->sanitiseRecord($table, (array) $row))
                 ->all();
         }
 
         return $data;
+    }
+
+    private function sanitiseRecord(string $table, array $record): array
+    {
+        if ($table === 'people') {
+            unset($record['password'], $record['login'], $record['web_login_enabled']);
+        }
+
+        return $record;
     }
 }

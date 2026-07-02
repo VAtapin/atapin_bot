@@ -15,8 +15,8 @@
         <label><span>Email</span><input name="email" type="email" value="{{ old('email') }}" required></label>
         <label><span>Пароль</span><input name="password" type="password" required></label>
         <label><span>Повторите пароль</span><input name="password_confirmation" type="password" required></label>
-        <label><span>Название семьи</span><input name="tree_name" value="{{ old('tree_name') }}" placeholder="Семья Атапиных" required></label>
-        <label><span>Адрес дерева</span><input name="tree_slug" value="{{ old('tree_slug') }}" placeholder="atapiny" required></label>
+        <label><span>Название семьи</span><input name="tree_name" value="{{ old('tree_name') }}" placeholder="Например, семья Ивановых" required></label>
+        <label><span>Адрес дерева</span><input name="tree_slug" value="{{ old('tree_slug') }}" placeholder="ivanovy" required></label>
         <div class="wide"><button class="button" type="submit">Создать дерево</button></div>
     </form>
 </section>

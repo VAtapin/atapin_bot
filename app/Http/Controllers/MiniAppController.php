@@ -36,7 +36,10 @@ class MiniAppController extends Controller
                 'authError' => session('telegram_auth_error'),
                 'loginError' => session('login_error') ?: session('errors')?->first('login'),
                 'telegramLoginUrl' => config('services.telegram.oidc_client_id')
-                    ? route('telegram.login')
+                    ? route('telegram.login', array_filter([
+                        'tree' => $tree?->slug,
+                        'return' => '/'.ltrim($request->getRequestUri(), '/'),
+                    ]))
                     : null,
                 'telegramCredentialsUrl' => 'https://t.me/'
                     .ltrim((string) config('services.telegram.bot_username'), '@')
@@ -118,7 +121,13 @@ class MiniAppController extends Controller
         $partnerships = Partnership::query()
             ->whereIn('partner_one_id', $ids)
             ->whereIn('partner_two_id', $ids)
-            ->get(['partner_one_id', 'partner_two_id', 'status']);
+            ->get([
+                'partner_one_id',
+                'partner_two_id',
+                'status',
+                'started_at',
+                'ended_at',
+            ]);
         $allParentChild = ParentChild::query()->get(['parent_id', 'child_id', 'type']);
         $allPartnerships = Partnership::query()
             ->get(['partner_one_id', 'partner_two_id', 'status', 'started_at', 'ended_at']);
@@ -140,7 +149,9 @@ class MiniAppController extends Controller
                 'maiden_name' => $person->maiden_name,
                 'gender' => $person->gender,
                 'birth_date' => $person->birth_date?->toDateString(),
+                'birth_date_precision' => $person->birth_date_precision,
                 'death_date' => $person->death_date?->toDateString(),
+                'death_date_precision' => $person->death_date_precision,
                 'life_years' => $person->life_years,
                 'birth_place' => $person->birth_place,
                 'death_place' => $person->death_place,
@@ -165,6 +176,11 @@ class MiniAppController extends Controller
             ]),
             'parent_child' => $parentChild,
             'partnerships' => $partnerships,
+            'tree' => [
+                'id' => (string) app(CurrentTree::class)->id(),
+                'slug' => app(CurrentTree::class)->get()?->slug,
+                'name' => app(CurrentTree::class)->get()?->name,
+            ],
             'focus_id' => $focusId ? (string) $focusId : null,
             'total_people' => $totalPeople,
             'shown_people' => $people->count(),
@@ -197,6 +213,17 @@ class MiniAppController extends Controller
             ->latest('id')
             ->get();
         $photos = $this->withoutGedcomCutoutDuplicates($photos)
+            ->groupBy(function (PersonPhoto $photo): string {
+                $source = (string) ($photo->source_url ?: $photo->path ?: $photo->id);
+                $parts = parse_url($source);
+
+                return isset($parts['host'])
+                    ? mb_strtolower($parts['host'].($parts['path'] ?? ''))
+                    : mb_strtolower(str_replace('\\', '/', $source));
+            })
+            ->map(fn ($duplicates): PersonPhoto => $duplicates
+                ->sortBy(fn (PersonPhoto $photo): int => $photo->person->gedcom_id === 'I88888888' ? 1 : 0)
+                ->first())
             ->filter(fn ($photo): bool => filled($photo->url))
             ->map(function ($photo): array {
                 $isUnassociated = $photo->person->gedcom_id === 'I88888888';
@@ -434,6 +461,7 @@ class MiniAppController extends Controller
             ->where('is_published', true)
             ->whereNull('death_date')
             ->whereNotNull('birth_date')
+            ->where('birth_date_precision', 'day')
             ->get()
             ->map(function (Person $person) use ($today): array {
                 $next = Carbon::create(
@@ -462,6 +490,8 @@ class MiniAppController extends Controller
         $anniversaries = Partnership::query()
             ->with(['partnerOne', 'partnerTwo'])
             ->whereNotNull('started_at')
+            ->whereNull('ended_at')
+            ->whereIn('status', ['married', 'partners'])
             ->get()
             ->map(function (Partnership $partnership) use ($today): array {
                 $next = Carbon::create(

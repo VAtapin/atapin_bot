@@ -51,10 +51,14 @@ class Partnership extends Model
                 ];
             }
 
-            $firstTreeId = Person::query()->whereKey($partnership->partner_one_id)->value('tree_id');
-            $secondTreeId = Person::query()->whereKey($partnership->partner_two_id)->value('tree_id');
+            $firstTreeId = Person::withoutGlobalScope('family_tree')
+                ->whereKey($partnership->partner_one_id)
+                ->value('tree_id');
+            $secondTreeId = Person::withoutGlobalScope('family_tree')
+                ->whereKey($partnership->partner_two_id)
+                ->value('tree_id');
 
-            if ($firstTreeId !== $secondTreeId) {
+            if (! $firstTreeId || $firstTreeId !== $secondTreeId) {
                 throw ValidationException::withMessages([
                     'partner_two_id' => 'Оба партнёра должны находиться в одном дереве.',
                 ]);

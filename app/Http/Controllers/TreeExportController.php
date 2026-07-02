@@ -14,7 +14,7 @@ class TreeExportController extends Controller
         FamilyTree $tree,
         TreeArchiveService $archive,
     ): StreamedResponse {
-        abort_unless($request->user()?->canManageTree($tree), 403);
+        abort_unless($request->user()?->ownsTree($tree), 403);
         $payload = $archive->export($tree);
 
         return response()->streamDownload(

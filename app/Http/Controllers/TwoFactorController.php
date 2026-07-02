@@ -28,6 +28,8 @@ class TwoFactorController extends Controller
         $request->session()->put('two_factor_user_id', $request->user()->id);
         $request->session()->forget(['two_factor_code_hash', 'two_factor_expires_at']);
 
-        return redirect('/admin');
+        return redirect()->to(
+            (string) $request->session()->pull('two_factor_intended_url', '/trees'),
+        );
     }
 }

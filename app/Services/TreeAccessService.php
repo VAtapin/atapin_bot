@@ -33,16 +33,21 @@ class TreeAccessService
                 ]);
             }
 
-            $membership = TreeMembership::query()->updateOrCreate(
-                ['tree_id' => $invitation->tree_id, 'user_id' => $user->id],
-                [
-                    'person_id' => $invitation->person_id,
-                    'role' => $invitation->role,
-                    'status' => 'approved',
-                    'approved_by_user_id' => $invitation->created_by_user_id,
-                    'approved_at' => now(),
-                ],
-            );
+            $membership = TreeMembership::query()->firstOrNew([
+                'tree_id' => $invitation->tree_id,
+                'user_id' => $user->id,
+            ]);
+            $rank = ['guest' => 0, 'member' => 1, 'moderator' => 2, 'owner' => 3];
+            $role = ($rank[$membership->role] ?? -1) >= ($rank[$invitation->role] ?? 0)
+                ? $membership->role
+                : $invitation->role;
+            $membership->fill([
+                'person_id' => $membership->person_id ?: $invitation->person_id,
+                'role' => $role,
+                'status' => 'approved',
+                'approved_by_user_id' => $invitation->created_by_user_id,
+                'approved_at' => $membership->approved_at ?: now(),
+            ])->save();
             $invitation->increment('uses_count');
 
             return $membership;

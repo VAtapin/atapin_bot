@@ -16,6 +16,14 @@ class CreateTreeInvitation extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $this->plainToken = bin2hex(random_bytes(32));
+        $tree = app(CurrentTree::class)->get();
+        $actorRole = $tree ? auth()->user()?->roleInTree($tree) : null;
+        abort_if(
+            ($data['role'] ?? null) === 'moderator'
+            && ! auth()->user()?->is_super_admin
+            && $actorRole !== 'owner',
+            403,
+        );
 
         return [
             ...$data,

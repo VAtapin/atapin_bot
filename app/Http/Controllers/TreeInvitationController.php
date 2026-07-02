@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\TreeInvitation;
+use App\Services\AuthRedirector;
+use App\Services\TreeAccessService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -20,6 +22,13 @@ class TreeInvitationController extends Controller
         $request->session()->put('family_invitation_token', $token);
         $request->session()->put('family_tree_id', $invitation->tree_id);
 
-        return redirect()->route('family.tree', $invitation->tree);
+        if ($request->user()) {
+            $membership = app(TreeAccessService::class)->acceptInvitation($request->user(), $token);
+            $request->session()->forget('family_invitation_token');
+
+            return app(AuthRedirector::class)->redirect($request->user(), $membership->tree);
+        }
+
+        return redirect()->route('login', ['tree' => $invitation->tree->slug]);
     }
 }

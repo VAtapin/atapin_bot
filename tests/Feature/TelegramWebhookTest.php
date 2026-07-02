@@ -10,6 +10,7 @@ use App\Models\TelegramUpdate;
 use App\Models\TelegramUser;
 use App\Models\TreeMembership;
 use App\Models\User;
+use App\Support\CurrentTree;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -25,6 +26,7 @@ class TelegramWebhookTest extends TestCase
 
         config()->set('services.telegram.bot_token', 'test-token');
         config()->set('services.telegram.webhook_secret', 'test-secret');
+        config()->set('services.telegram.bot_username', 'idommoy_bot');
         Http::fake([
             'api.telegram.org/*' => Http::response(['ok' => true, 'result' => []]),
         ]);
@@ -85,11 +87,7 @@ class TelegramWebhookTest extends TestCase
 
     public function test_person_command_waits_for_the_next_message(): void
     {
-        $user = TelegramUser::query()->create([
-            'telegram_user_id' => 321,
-            'first_name' => 'Иван',
-            'status' => 'approved',
-        ]);
+        $user = $this->approvedTelegramUser();
         Person::factory()->create(['first_name' => 'Анатолий', 'last_name' => 'Атапин']);
 
         $this->sendPrivateMessage(2001, '/person');
@@ -121,11 +119,7 @@ class TelegramWebhookTest extends TestCase
 
     public function test_section_command_is_queued_for_an_already_open_mini_app(): void
     {
-        $user = TelegramUser::query()->create([
-            'telegram_user_id' => 321,
-            'first_name' => 'Иван',
-            'status' => 'approved',
-        ]);
+        $user = $this->approvedTelegramUser();
 
         $this->sendPrivateMessage(2101, '/photos');
 
@@ -142,33 +136,23 @@ class TelegramWebhookTest extends TestCase
     public function test_approved_linked_user_can_receive_new_site_credentials(): void
     {
         $person = Person::factory()->create();
-        TelegramUser::query()->create([
-            'telegram_user_id' => 321,
-            'first_name' => 'Иван',
-            'status' => 'approved',
-            'person_id' => $person->id,
-        ]);
+        $telegramUser = $this->approvedTelegramUser($person);
 
         $this->sendPrivateMessage(2201, '/credentials');
 
-        $person->refresh();
-        $this->assertTrue($person->web_login_enabled);
-        $this->assertNotNull($person->login);
+        $familyUser = $telegramUser->user->fresh();
+        $this->assertNotNull($familyUser->login);
 
         $request = Http::recorded()->last()[0];
         preg_match('/Новый пароль: <code>([^<]+)<\/code>/', $request->data()['text'], $matches);
         $this->assertNotEmpty($matches[1] ?? null);
-        $this->assertTrue(Hash::check($matches[1], $person->password));
+        $this->assertTrue(Hash::check($matches[1], $familyUser->password));
         $this->assertTrue($request->data()['protect_content']);
     }
 
     public function test_site_command_sends_one_time_login_link(): void
     {
-        $user = TelegramUser::query()->create([
-            'telegram_user_id' => 321,
-            'first_name' => 'Иван',
-            'status' => 'approved',
-        ]);
+        $user = $this->approvedTelegramUser();
 
         $this->sendPrivateMessage(2202, '/site');
 
@@ -176,7 +160,7 @@ class TelegramWebhookTest extends TestCase
         $url = $request->data()['reply_markup']['inline_keyboard'][0][0]['url'];
 
         $this->get($url)
-            ->assertRedirect('/family')
+            ->assertRedirect('/family/test-family')
             ->assertSessionHas('family_telegram_user_id', $user->id);
 
         $this->get($url)->assertForbidden();
@@ -184,11 +168,7 @@ class TelegramWebhookTest extends TestCase
 
     public function test_group_person_result_uses_authenticated_mini_app_deep_link(): void
     {
-        TelegramUser::query()->create([
-            'telegram_user_id' => 321,
-            'first_name' => 'Иван',
-            'status' => 'approved',
-        ]);
+        $this->approvedTelegramUser();
         TelegramGroup::query()->create([
             'telegram_chat_id' => -100123,
             'title' => 'Большая семья',
@@ -205,7 +185,8 @@ class TelegramWebhookTest extends TestCase
         $request = Http::recorded()->last()[0];
         $url = $request->data()['reply_markup']['inline_keyboard'][0][0]['url'];
         $this->assertSame(
-            'https://t.me/atapin_bot?startapp=tree_1_person_'.$person->id,
+            'https://t.me/idommoy_bot?startapp=tree_'
+                .app(CurrentTree::class)->id().'_person_'.$person->id,
             $url,
         );
     }
@@ -213,22 +194,31 @@ class TelegramWebhookTest extends TestCase
     public function test_admin_can_manage_user_access_from_inline_buttons(): void
     {
         config()->set('services.telegram.admin_ids', ['999']);
-        $target = TelegramUser::query()->create([
+        $targetUser = User::factory()->create();
+        $membership = TreeMembership::query()->create([
+            'tree_id' => app(CurrentTree::class)->id(),
+            'user_id' => $targetUser->id,
+            'role' => 'guest',
+            'status' => 'pending',
+        ]);
+        TelegramUser::query()->create([
+            'user_id' => $targetUser->id,
+            'current_tree_id' => app(CurrentTree::class)->id(),
             'telegram_user_id' => 321,
             'status' => 'pending',
         ]);
 
-        $this->sendAccessCallback(3001, 'approve', $target);
-        $this->assertSame('approved', $target->fresh()->status);
+        $this->sendMembershipCallback(3001, 'approve', $membership);
+        $this->assertSame('approved', $membership->fresh()->status);
 
-        $this->sendAccessCallback(3002, 'admin', $target);
-        $this->assertTrue($target->fresh()->is_bot_admin);
+        $this->sendMembershipCallback(3002, 'moderator', $membership);
+        $this->assertSame('moderator', $membership->fresh()->role);
 
-        $this->sendAccessCallback(3003, 'unadmin', $target);
-        $this->assertFalse($target->fresh()->is_bot_admin);
+        $this->sendMembershipCallback(3003, 'member', $membership);
+        $this->assertSame('member', $membership->fresh()->role);
 
-        $this->sendAccessCallback(3004, 'block', $target);
-        $this->assertSame('blocked', $target->fresh()->status);
+        $this->sendMembershipCallback(3004, 'block', $membership);
+        $this->assertSame('blocked', $membership->fresh()->status);
 
         foreach (range(1, 4) as $callbackId) {
             Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/answerCallbackQuery')
@@ -280,15 +270,18 @@ class TelegramWebhookTest extends TestCase
         $this->assertSame($secondTree->id, $telegramUser->fresh()->mini_app_action['tree_id']);
     }
 
-    private function sendAccessCallback(int $updateId, string $action, TelegramUser $target): void
-    {
+    private function sendMembershipCallback(
+        int $updateId,
+        string $action,
+        TreeMembership $membership,
+    ): void {
         $this->withHeader('X-Telegram-Bot-Api-Secret-Token', 'test-secret')
             ->postJson('/api/telegram/webhook', [
                 'update_id' => $updateId,
                 'callback_query' => [
                     'id' => 'callback-'.($updateId - 3000),
                     'from' => ['id' => 999, 'first_name' => 'Админ'],
-                    'data' => 'access:'.$action.':'.$target->id,
+                    'data' => 'membership:'.$action.':'.$membership->id,
                     'message' => [
                         'message_id' => 55,
                         'chat' => ['id' => 999, 'type' => 'private'],
@@ -338,5 +331,27 @@ class TelegramWebhookTest extends TestCase
                 ],
             ])
             ->assertOk();
+    }
+
+    private function approvedTelegramUser(?Person $person = null): TelegramUser
+    {
+        $user = User::factory()->create();
+        TreeMembership::query()->create([
+            'tree_id' => app(CurrentTree::class)->id(),
+            'user_id' => $user->id,
+            'person_id' => $person?->id,
+            'role' => $person ? 'member' : 'guest',
+            'status' => 'approved',
+            'approved_at' => now(),
+        ]);
+
+        return TelegramUser::query()->create([
+            'user_id' => $user->id,
+            'current_tree_id' => app(CurrentTree::class)->id(),
+            'telegram_user_id' => 321,
+            'first_name' => 'Иван',
+            'status' => 'approved',
+            'person_id' => $person?->id,
+        ]);
     }
 }

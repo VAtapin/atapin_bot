@@ -1,10 +1,11 @@
 import cytoscape from 'cytoscape';
-import dagre from 'cytoscape-dagre';
 import bridge from '@vkontakte/vk-bridge';
+import { calculateFamilyTreePositions } from './family-tree-layout.js';
 import '../css/app.css';
 
-cytoscape.use(dagre);
-
+const mourningRibbonImage = `data:image/svg+xml;utf8,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M10 43L43 10" stroke="#171717" stroke-width="11" stroke-linecap="square"/></svg>',
+)}`;
 const telegram = window.Telegram?.WebApp;
 const initialParams = new URLSearchParams(window.location.search);
 const vkLaunchParams = initialParams.has('vk_user_id') && initialParams.has('sign')
@@ -154,6 +155,7 @@ function showError(message, payload = {}) {
 
 function personElements(data) {
     state.people = new Map(data.people.map((person) => [String(person.id), person]));
+    const positions = calculateFamilyTreePositions(data);
 
     const nodes = data.people.map((person) => ({
         data: {
@@ -163,8 +165,30 @@ function personElements(data) {
             photo: person.photo_url || '',
             gender: person.gender,
         },
-        classes: person.photo_url ? 'person has-photo' : 'person',
+        classes: [
+            'person',
+            person.photo_url ? 'has-photo' : '',
+            person.death_date ? 'deceased' : '',
+        ].filter(Boolean).join(' '),
+        position: positions.get(String(person.id)),
     }));
+    const mourningNodes = data.people
+        .filter((person) => person.death_date && positions.has(String(person.id)))
+        .map((person) => {
+            const position = positions.get(String(person.id));
+
+            return {
+                data: {
+                    id: `mourning-${person.id}`,
+                    kind: 'mourning',
+                    image: mourningRibbonImage,
+                },
+                classes: 'mourning-ribbon',
+                position: { x: position.x + 92, y: position.y + 34 },
+                grabbable: false,
+                selectable: false,
+            };
+        });
 
     const unionByPair = new Map();
     const unionNodes = [];
@@ -176,8 +200,18 @@ function personElements(data) {
         const unionId = `union-${pairKey}`;
         unionByPair.set(pairKey, unionId);
         unionNodes.push({
-            data: { id: unionId, label: '♥', kind: 'union' },
-            classes: 'union',
+            data: {
+                id: unionId,
+                label: '♥',
+                kind: 'union',
+                status: link.status,
+                startedAt: link.started_at,
+                endedAt: link.ended_at,
+            },
+            classes: link.ended_at || ['divorced', 'ended'].includes(link.status)
+                ? 'union ended'
+                : 'union',
+            position: positions.get(unionId),
         });
         partners.forEach((partnerId) => partnershipEdges.push({
             data: {
@@ -185,6 +219,7 @@ function personElements(data) {
                 source: partnerId,
                 target: unionId,
                 kind: 'partner',
+                status: link.status,
             },
         }));
     }
@@ -223,18 +258,231 @@ function personElements(data) {
         }
     }
 
-    return [...nodes, ...unionNodes, ...parentEdges, ...partnershipEdges];
+    return [...nodes, ...mourningNodes, ...unionNodes, ...parentEdges, ...partnershipEdges];
 }
 
-function compactDate(value) {
+function familyTreePositions(data) {
+    const people = new Map(data.people.map((person) => [String(person.id), person]));
+    const parentLinks = data.parent_child.map((link) => ({
+        parent: String(link.parent_id),
+        child: String(link.child_id),
+    }));
+    const partnerships = data.partnerships.map((link) => ({
+        ...link,
+        one: String(link.partner_one_id),
+        two: String(link.partner_two_id),
+    }));
+    const generations = new Map([...people.keys()].map((id) => [id, 0]));
+
+    for (let iteration = 0; iteration < Math.max(people.size, 1); iteration++) {
+        let changed = false;
+
+        for (const link of parentLinks) {
+            const next = Math.max(generations.get(link.child) ?? 0, (generations.get(link.parent) ?? 0) + 1);
+            if (next !== generations.get(link.child)) {
+                generations.set(link.child, next);
+                changed = true;
+            }
+        }
+
+        for (const link of partnerships) {
+            const generation = Math.max(generations.get(link.one) ?? 0, generations.get(link.two) ?? 0);
+            if (generations.get(link.one) !== generation || generations.get(link.two) !== generation) {
+                generations.set(link.one, generation);
+                generations.set(link.two, generation);
+                changed = true;
+            }
+        }
+
+        if (!changed) break;
+    }
+
+    const parent = new Map([...people.keys()].map((id) => [id, id]));
+    const find = (id) => {
+        let root = id;
+        while (parent.get(root) !== root) root = parent.get(root);
+        while (parent.get(id) !== id) {
+            const next = parent.get(id);
+            parent.set(id, root);
+            id = next;
+        }
+        return root;
+    };
+    const unite = (left, right) => {
+        const leftRoot = find(left);
+        const rightRoot = find(right);
+        if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
+    };
+    partnerships.forEach((link) => unite(link.one, link.two));
+
+    const components = new Map();
+    for (const id of people.keys()) {
+        const root = find(id);
+        if (!components.has(root)) components.set(root, []);
+        components.get(root).push(id);
+    }
+
+    const partnershipDate = (link) => {
+        const value = link.started_at || link.ended_at || '';
+        const timestamp = value ? Date.parse(value) : 0;
+        return Number.isFinite(timestamp) ? timestamp : 0;
+    };
+    const linksFor = (id) => partnerships.filter((link) => link.one === id || link.two === id);
+    const orderedMembers = (members) => {
+        if (members.length < 2) return members;
+
+        const central = [...members].sort((left, right) => {
+            const degree = linksFor(right).length - linksFor(left).length;
+            return degree || Number(left) - Number(right);
+        })[0];
+        const centralPerson = people.get(central);
+        const spouses = members.filter((id) => id !== central);
+        const newestFirst = (left, right) => {
+            const leftLink = linksFor(central).find((link) => link.one === left || link.two === left);
+            const rightLink = linksFor(central).find((link) => link.one === right || link.two === right);
+            return partnershipDate(rightLink ?? {}) - partnershipDate(leftLink ?? {});
+        };
+
+        if (centralPerson?.gender === 'male') {
+            return [...spouses.sort((left, right) => -newestFirst(left, right)), central];
+        }
+
+        if (centralPerson?.gender === 'female') {
+            return [central, ...spouses.sort(newestFirst)];
+        }
+
+        return [...members].sort((left, right) => {
+            const genderOrder = { female: 0, unknown: 1, male: 2 };
+            return (genderOrder[people.get(left)?.gender] ?? 1)
+                - (genderOrder[people.get(right)?.gender] ?? 1);
+        });
+    };
+
+    const clusters = [...components.entries()].map(([root, members]) => {
+        const ordered = orderedMembers(members);
+        const memberSet = new Set(members);
+        const generation = Math.max(...members.map((id) => generations.get(id) ?? 0));
+        const childMembers = members.filter((id) => parentLinks.some((link) => link.child === id));
+        const anchorMember = [...childMembers, ...members][0];
+        const parentIds = parentLinks
+            .filter((link) => link.child === anchorMember)
+            .map((link) => link.parent)
+            .sort();
+        const parentKey = parentIds.length ? parentIds.join('-') : `root-${root}`;
+        const birth = people.get(anchorMember)?.birth_date;
+
+        return {
+            root,
+            members,
+            memberSet,
+            ordered,
+            generation,
+            parentIds,
+            parentKey,
+            birthOrder: birth ? Date.parse(birth) : Number.MAX_SAFE_INTEGER,
+            width: ordered.length * 220 + Math.max(ordered.length - 1, 0) * 28,
+        };
+    });
+    const positions = new Map();
+    const personWidth = 220;
+    const spouseGap = 28;
+    const familyGap = 110;
+    const generationGap = 245;
+    const maxGeneration = Math.max(0, ...clusters.map((cluster) => cluster.generation));
+
+    for (let generation = 0; generation <= maxGeneration; generation++) {
+        const levelClusters = clusters.filter((cluster) => cluster.generation === generation);
+        const groups = new Map();
+
+        for (const cluster of levelClusters) {
+            const key = cluster.parentKey;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(cluster);
+        }
+
+        const groupEntries = [...groups.entries()].map(([key, items]) => {
+            items.sort((left, right) => left.birthOrder - right.birthOrder || String(left.root).localeCompare(String(right.root)));
+            const parentXs = items.flatMap((item) => item.parentIds)
+                .map((id) => positions.get(id)?.x)
+                .filter((value) => Number.isFinite(value));
+
+            return {
+                key,
+                items,
+                desiredX: parentXs.length
+                    ? parentXs.reduce((sum, value) => sum + value, 0) / parentXs.length
+                    : Number.POSITIVE_INFINITY,
+                width: items.reduce((sum, item) => sum + item.width, 0)
+                    + Math.max(items.length - 1, 0) * familyGap,
+            };
+        });
+
+        groupEntries.sort((left, right) => {
+            const leftFinite = Number.isFinite(left.desiredX);
+            const rightFinite = Number.isFinite(right.desiredX);
+            if (leftFinite && rightFinite) return left.desiredX - right.desiredX;
+            if (leftFinite) return -1;
+            if (rightFinite) return 1;
+            return left.key.localeCompare(right.key);
+        });
+
+        let cursor = 0;
+        for (const group of groupEntries) {
+            const desiredStart = Number.isFinite(group.desiredX)
+                ? group.desiredX - group.width / 2
+                : cursor;
+            let clusterCursor = Math.max(cursor, desiredStart);
+
+            for (const cluster of group.items) {
+                let memberX = clusterCursor + personWidth / 2;
+                const y = generation * generationGap;
+
+                for (const memberId of cluster.ordered) {
+                    positions.set(memberId, { x: memberX, y });
+                    memberX += personWidth + spouseGap;
+                }
+
+                clusterCursor += cluster.width + familyGap;
+            }
+
+            cursor = clusterCursor;
+        }
+    }
+
+    if (positions.size) {
+        const minX = Math.min(...[...positions.values()].map((position) => position.x));
+        const maxX = Math.max(...[...positions.values()].map((position) => position.x));
+        const offset = (minX + maxX) / 2;
+        positions.forEach((position, id) => positions.set(id, { ...position, x: position.x - offset }));
+    }
+
+    for (const link of partnerships) {
+        const partners = [link.one, link.two].sort();
+        const unionId = `union-${partners.join('-')}`;
+        const one = positions.get(link.one);
+        const two = positions.get(link.two);
+        if (one && two) {
+            positions.set(unionId, {
+                x: (one.x + two.x) / 2,
+                y: Math.max(one.y, two.y) + 76,
+            });
+        }
+    }
+
+    return positions;
+}
+
+function compactDate(value, precision = 'day') {
     if (!value) return '';
     const [year, month, day] = value.split('-');
+    if (precision === 'year') return year;
+    if (precision === 'month') return [month, year].filter(Boolean).join('.');
     return [day, month, year].filter(Boolean).join('.');
 }
 
 function treeDateLabel(person) {
-    const birth = compactDate(person.birth_date);
-    const death = compactDate(person.death_date);
+    const birth = compactDate(person.birth_date, person.birth_date_precision);
+    const death = compactDate(person.death_date, person.death_date_precision);
 
     if (birth && death) return `${birth} — ${death}`;
     if (death) return `† ${death}`;
@@ -326,6 +574,21 @@ function renderTree(data) {
                 },
             },
             {
+                selector: 'node.mourning-ribbon',
+                style: {
+                    width: 44,
+                    height: 44,
+                    shape: 'rectangle',
+                    'background-opacity': 0,
+                    'background-image': 'data(image)',
+                    'background-fit': 'contain',
+                    'border-width': 0,
+                    'events': 'no',
+                    'overlay-opacity': 0,
+                    'z-index': 20,
+                },
+            },
+            {
                 selector: 'edge[kind = "parent"]',
                 style: {
                     width: 1.6,
@@ -346,6 +609,19 @@ function renderTree(data) {
                 },
             },
             {
+                selector: 'edge[kind = "partner"][status = "divorced"], edge[kind = "partner"][status = "ended"]',
+                style: {
+                    'line-style': 'dashed',
+                    'line-color': '#8c8580',
+                },
+            },
+            {
+                selector: 'node.union.ended',
+                style: {
+                    'background-color': '#8c8580',
+                },
+            },
+            {
                 selector: 'node.person:selected',
                 style: {
                     'border-width': 3,
@@ -354,11 +630,8 @@ function renderTree(data) {
             },
         ],
         layout: {
-            name: 'dagre',
-            rankDir: 'TB',
-            rankSep: 115,
-            nodeSep: 58,
-            edgeSep: 18,
+            name: 'preset',
+            fit: true,
             padding: 45,
         },
     });
@@ -395,9 +668,11 @@ function renderList(data) {
     list.innerHTML = data.people.length
         ? data.people.map((person) => `
             <button class="person-row" type="button" data-person-id="${person.id}">
-                ${person.photo_url
-                    ? `<img src="${escapeHtml(person.photo_url)}" alt="">`
-                    : `<span class="person-row-avatar">${escapeHtml(person.name.slice(0, 1))}</span>`}
+                <span class="person-avatar-wrap ${person.death_date ? 'is-deceased' : ''}">
+                    ${person.photo_url
+                        ? `<img src="${escapeHtml(person.photo_url)}" alt="">`
+                        : `<span class="person-row-avatar">${escapeHtml(person.name.slice(0, 1))}</span>`}
+                </span>
                 <span class="person-row-main">
                     <strong>${escapeHtml(person.name)}</strong>
                     <small>${escapeHtml(relationLabels[person.relation] || person.life_years || 'Родственник')}</small>
@@ -419,8 +694,15 @@ function renderList(data) {
     });
 }
 
-function formatDate(value) {
+function formatDate(value, precision = 'day') {
     if (!value) return '';
+    if (precision === 'year') return value.slice(0, 4);
+    if (precision === 'month') {
+        return new Date(`${value}T12:00:00`).toLocaleDateString('ru-RU', {
+            month: 'long',
+            year: 'numeric',
+        });
+    }
     return new Date(`${value}T12:00:00`).toLocaleDateString('ru-RU', {
         day: 'numeric',
         month: 'long',
@@ -435,12 +717,16 @@ function showPerson(id) {
 
     const photo = person.photo_url
         ? `<button class="person-photo-button" type="button" data-view-main-photo>
-            <img class="person-photo" src="${escapeHtml(person.photo_url)}" alt="">
+            <span class="person-photo-wrap ${person.death_date ? 'is-deceased' : ''}">
+                <img class="person-photo" src="${escapeHtml(person.photo_url)}" alt="">
+            </span>
         </button>`
-        : `<div class="person-photo person-photo--empty">${escapeHtml(person.name.slice(0, 1))}</div>`;
+        : `<div class="person-photo-wrap ${person.death_date ? 'is-deceased' : ''}">
+            <div class="person-photo person-photo--empty">${escapeHtml(person.name.slice(0, 1))}</div>
+        </div>`;
     const facts = [
-        person.birth_date && ['Дата рождения', formatDate(person.birth_date)],
-        person.death_date && ['Дата смерти', formatDate(person.death_date)],
+        person.birth_date && ['Дата рождения', formatDate(person.birth_date, person.birth_date_precision)],
+        person.death_date && ['Дата смерти', formatDate(person.death_date, person.death_date_precision)],
         person.life_years && ['Годы жизни', person.life_years],
         person.maiden_name && ['Девичья фамилия', person.maiden_name],
         person.birth_place && ['Место рождения', person.birth_place],
@@ -555,6 +841,10 @@ async function loadTree() {
 
     try {
         const data = await api(`/api/family/tree?${treeQuery()}`);
+        if (data.tree?.id) {
+            state.treeId = data.tree.id;
+            state.treeSlug = data.tree.slug;
+        }
         state.lastTreeData = data;
         state.focusId = data.focus_id;
         state.people = new Map(data.people.map((person) => [String(person.id), person]));

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Validation\ValidationException;
 
 class TreeInvitation extends Model
 {
@@ -28,6 +29,25 @@ class TreeInvitation extends Model
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (TreeInvitation $invitation): void {
+            if (! $invitation->person_id) {
+                return;
+            }
+
+            $personTreeId = Person::withoutGlobalScope('family_tree')
+                ->whereKey($invitation->person_id)
+                ->value('tree_id');
+
+            if ((int) $personTreeId !== (int) $invitation->tree_id) {
+                throw ValidationException::withMessages([
+                    'person_id' => 'Приглашение нельзя привязать к человеку из другого дерева.',
+                ]);
+            }
+        });
     }
 
     public function tree(): BelongsTo

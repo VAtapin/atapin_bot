@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RecordsChanges;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Validation\ValidationException;
 
 class TreeMembership extends Model
 {
+    use RecordsChanges;
+
     public const ROLES = [
         'owner' => 'Владелец',
         'moderator' => 'Администратор-модератор',
@@ -38,6 +41,37 @@ class TreeMembership extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (TreeMembership $membership): void {
+            $tree = FamilyTree::query()->find($membership->tree_id);
+            if ($membership->role === 'owner' && (int) $tree?->owner_user_id !== (int) $membership->user_id) {
+                throw ValidationException::withMessages([
+                    'role' => 'Роль владельца назначается только передачей владения деревом.',
+                ]);
+            }
+            if (
+                (int) $tree?->owner_user_id === (int) $membership->user_id
+                && ($membership->role !== 'owner' || $membership->status !== 'approved')
+            ) {
+                throw ValidationException::withMessages([
+                    'role' => 'Владельца дерева нельзя понизить или заблокировать.',
+                ]);
+            }
+
+            if (! $membership->person_id) {
+                return;
+            }
+
+            $personTreeId = Person::withoutGlobalScope('family_tree')
+                ->whereKey($membership->person_id)
+                ->value('tree_id');
+
+            if ((int) $personTreeId !== (int) $membership->tree_id) {
+                throw ValidationException::withMessages([
+                    'person_id' => 'Карточка человека должна находиться в том же дереве.',
+                ]);
+            }
+        });
+
         static::creating(function (TreeMembership $membership): void {
             $tree = FamilyTree::query()->with('plan')->find($membership->tree_id);
             $limit = (int) ($tree?->plan?->member_limit ?? 0);

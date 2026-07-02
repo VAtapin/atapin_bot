@@ -37,4 +37,14 @@ class Plan extends Model
     {
         return $this->hasMany(FamilyTree::class);
     }
+
+    public function subscriptions(): HasMany
+    {
+        return $this->hasMany(Subscription::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
 }

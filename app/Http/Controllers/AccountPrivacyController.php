@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FamilyTree;
+use App\Models\Person;
 use App\Models\TelegramUser;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,7 @@ class AccountPrivacyController extends Controller
         $user = $request->attributes->get('familyUser');
         $person = $request->attributes->get('familyPerson')
             ?: $request->attributes->get('treeMembership')?->person;
+        $personIds = $user?->memberships()->whereNotNull('person_id')->pluck('person_id') ?? collect();
 
         return response()->json([
             'exported_at' => now()->toIso8601String(),
@@ -25,7 +27,15 @@ class AccountPrivacyController extends Controller
             'memberships' => $user?->memberships()
                 ->with('tree:id,name,slug')
                 ->get(['id', 'tree_id', 'person_id', 'role', 'status', 'created_at']),
-            'person' => $person?->load(['parents', 'children', 'photos', 'albums'])->toArray(),
+            'people' => Person::withoutGlobalScope('family_tree')
+                ->whereIn('id', $personIds)
+                ->with(['tree:id,name,slug', 'parents', 'children', 'photos', 'albums'])
+                ->get()
+                ->when(
+                    $person && ! $personIds->contains($person->id),
+                    fn ($people) => $people->push($person->load(['parents', 'children', 'photos', 'albums'])),
+                )
+                ->values(),
         ], headers: [
             'Content-Disposition' => 'attachment; filename="my-idommoy-data.json"',
         ]);
@@ -56,8 +66,12 @@ class AccountPrivacyController extends Controller
             $user->update([
                 'name' => 'Удалённый пользователь',
                 'email' => 'deleted_'.$user->id.'_'.now()->timestamp.'@idommoy.local',
+                'login' => null,
                 'password' => bin2hex(random_bytes(32)),
                 'is_active' => false,
+                'two_factor_enabled' => false,
+                'last_tree_id' => null,
+                'remember_token' => null,
             ]);
         });
 

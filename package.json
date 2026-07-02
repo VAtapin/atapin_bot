@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test": "node --test tests/js/*.test.js"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
@@ -15,7 +16,6 @@
     },
     "dependencies": {
         "@vkontakte/vk-bridge": "^3.0.2",
-        "cytoscape": "^3.34.0",
-        "cytoscape-dagre": "^4.0.0"
+        "cytoscape": "^3.34.0"
     }
 }

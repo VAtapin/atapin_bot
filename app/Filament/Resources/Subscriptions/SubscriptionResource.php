@@ -90,4 +90,12 @@ class SubscriptionResource extends Resource
     {
         return false;
     }
+
+    public static function canViewAny(): bool
+    {
+        $user = auth()->user();
+        $tree = app(CurrentTree::class)->get();
+
+        return (bool) ($user?->is_super_admin || ($tree && $user?->ownsTree($tree)));
+    }
 }

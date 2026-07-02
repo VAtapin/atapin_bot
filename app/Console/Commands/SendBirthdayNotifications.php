@@ -40,6 +40,7 @@ class SendBirthdayNotifications extends Command
                 $people = Person::query()
                     ->where('is_published', true)
                     ->whereNull('death_date')
+                    ->where('birth_date_precision', 'day')
                     ->whereMonth('birth_date', $now->month)
                     ->whereDay('birth_date', $now->day)
                     ->get();
@@ -47,6 +48,8 @@ class SendBirthdayNotifications extends Command
                     ->with(['partnerOne', 'partnerTwo'])
                     ->whereMonth('started_at', $now->month)
                     ->whereDay('started_at', $now->day)
+                    ->whereNull('ended_at')
+                    ->whereIn('status', ['married', 'partners'])
                     ->get();
 
                 if ($people->isEmpty() && $anniversaries->isEmpty()) {

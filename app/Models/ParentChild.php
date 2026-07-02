@@ -24,10 +24,14 @@ class ParentChild extends Model
                 ]);
             }
 
-            $parentTreeId = Person::query()->whereKey($link->parent_id)->value('tree_id');
-            $childTreeId = Person::query()->whereKey($link->child_id)->value('tree_id');
+            $parentTreeId = Person::withoutGlobalScope('family_tree')
+                ->whereKey($link->parent_id)
+                ->value('tree_id');
+            $childTreeId = Person::withoutGlobalScope('family_tree')
+                ->whereKey($link->child_id)
+                ->value('tree_id');
 
-            if ($parentTreeId !== $childTreeId) {
+            if (! $parentTreeId || $parentTreeId !== $childTreeId) {
                 throw ValidationException::withMessages([
                     'child_id' => 'Родитель и ребёнок должны находиться в одном дереве.',
                 ]);

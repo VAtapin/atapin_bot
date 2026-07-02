@@ -16,7 +16,9 @@
     <h1>История семьи должна жить</h1>
     <p>Закрытое семейное пространство для родословной, фотографий, воспоминаний и важных дат.</p>
     <div class="hero-actions">
-        <a class="button" href="{{ route('register') }}">Создать семейное дерево</a>
+        @if(\App\Models\PlatformSetting::value('registration_enabled', true))
+            <a class="button" href="{{ route('register') }}">Создать семейное дерево</a>
+        @endif
         <a class="button secondary" href="{{ route('public.page', 'about') }}">Узнать подробнее</a>
     </div>
 </section>
@@ -44,7 +46,9 @@
                 <p>{{ $plan->description }}</p>
                 <strong>{{ $plan->price_monthly > 0 ? $plan->price_monthly.' '.$plan->currency.' / месяц' : 'Бесплатно' }}</strong>
                 <p>До {{ number_format($plan->people_limit, 0, ',', ' ') }} человек · {{ round($plan->storage_limit_bytes / 1073741824, 1) }} ГБ</p>
-                <a class="button" href="{{ route('register') }}">Начать</a>
+                @if(\App\Models\PlatformSetting::value('registration_enabled', true))
+                    <a class="button" href="{{ route('register') }}">Начать</a>
+                @endif
             </article>
         @endforeach
     </div>
