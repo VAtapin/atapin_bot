@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\TwoFactorCodeDelivery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -15,8 +16,10 @@ class TwoFactorController extends Controller
         return view('public.two-factor');
     }
 
-    public function verify(Request $request): RedirectResponse
-    {
+    public function verify(
+        Request $request,
+        TwoFactorCodeDelivery $delivery,
+    ): RedirectResponse {
         $data = $request->validate(['code' => ['required', 'digits:6']]);
         $hash = (string) $request->session()->get('two_factor_code_hash');
         $expiresAt = (int) $request->session()->get('two_factor_expires_at');
@@ -25,6 +28,7 @@ class TwoFactorController extends Controller
             throw ValidationException::withMessages(['code' => 'Неверный или устаревший код.']);
         }
 
+        $delivery->deleteServerFallback($request->user());
         $request->session()->put('two_factor_user_id', $request->user()->id);
         $request->session()->forget(['two_factor_code_hash', 'two_factor_expires_at']);
 

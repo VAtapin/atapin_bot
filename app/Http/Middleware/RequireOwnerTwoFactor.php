@@ -2,17 +2,18 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\ExternalIdentity;
-use App\Services\TelegramBot;
+use App\Services\TwoFactorCodeDelivery;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Mail;
 use Symfony\Component\HttpFoundation\Response;
-use Throwable;
 
 class RequireOwnerTwoFactor
 {
+    public function __construct(
+        private readonly TwoFactorCodeDelivery $delivery,
+    ) {}
+
     public function handle(Request $request, Closure $next): Response
     {
         if (app()->runningUnitTests()) {
@@ -34,36 +35,13 @@ class RequireOwnerTwoFactor
             || now()->timestamp > (int) $request->session()->get('two_factor_expires_at')
         ) {
             $code = (string) random_int(100000, 999999);
+            $expiresAt = now()->addMinutes(10);
             $request->session()->put([
                 'two_factor_code_hash' => Hash::make($code),
-                'two_factor_expires_at' => now()->addMinutes(10)->timestamp,
+                'two_factor_expires_at' => $expiresAt->timestamp,
             ]);
-            $sent = false;
-            if (config('mail.default') !== 'log') {
-                try {
-                    Mail::raw(
-                        "Код входа в «Я и дом мой»: {$code}\n\nКод действует 10 минут.",
-                        fn ($message) => $message->to($user->email)->subject('Код подтверждения входа'),
-                    );
-                    $sent = true;
-                } catch (Throwable $exception) {
-                    report($exception);
-                }
-            }
 
-            if (! $sent) {
-                $telegramId = ExternalIdentity::query()
-                    ->where('user_id', $user->id)
-                    ->where('provider', 'telegram')
-                    ->value('provider_user_id');
-                if ($telegramId) {
-                    app(TelegramBot::class)->sendMessage(
-                        $telegramId,
-                        "🔐 Код входа в «Я и дом мой»: <b>{$code}</b>\n\nКод действует 10 минут.",
-                    );
-                    $sent = true;
-                }
-            }
+            $sent = $this->delivery->deliver($user, $code, $expiresAt);
             abort_unless($sent, 503, 'Не удалось отправить код. Настройте SMTP или подключите Telegram.');
         }
 

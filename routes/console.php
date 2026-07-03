@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\TwoFactorCodeDelivery;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -28,4 +29,10 @@ Schedule::command('domains:check')
     ->withoutOverlapping();
 Schedule::command('platform:heartbeat')
     ->everyMinute()
+    ->withoutOverlapping();
+Schedule::call(
+    fn (): int => app(TwoFactorCodeDelivery::class)->purgeExpiredServerFallbacks(),
+)
+    ->name('two-factor:purge-fallback-codes')
+    ->everyFiveMinutes()
     ->withoutOverlapping();

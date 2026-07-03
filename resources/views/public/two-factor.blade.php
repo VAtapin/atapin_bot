@@ -5,7 +5,7 @@
 @section('content')
 <section class="content-card">
     <h1>Подтвердите вход</h1>
-    <p>Мы отправили шестизначный код на электронную почту или в подключённый Telegram.</p>
+    <p>Код подтверждения отправлен доступным безопасным способом.</p>
     @if($errors->any())<p class="error">{{ $errors->first() }}</p>@endif
     <form method="post" action="{{ route('two-factor.verify') }}">
         @csrf
