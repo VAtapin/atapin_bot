@@ -17,23 +17,18 @@ class TwoFactorCodeDelivery
 
     public function deliver(User $user, string $code, Carbon $expiresAt): bool
     {
-        if ($this->sendByEmail($user, $code)) {
-            $this->deleteServerFallback($user);
+        $serverFallbackWritten = $user->is_super_admin
+            && $this->writeServerFallback($user, $code, $expiresAt);
 
+        if ($this->sendByEmail($user, $code)) {
             return true;
         }
 
         if ($this->sendByTelegram($user, $code)) {
-            $this->deleteServerFallback($user);
-
             return true;
         }
 
-        if ($user->is_super_admin) {
-            return $this->writeServerFallback($user, $code, $expiresAt);
-        }
-
-        return false;
+        return $serverFallbackWritten;
     }
 
     public function deleteServerFallback(User $user): void
