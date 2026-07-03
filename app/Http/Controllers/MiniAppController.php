@@ -188,17 +188,35 @@ class MiniAppController extends Controller
                 'ended_at',
             ]);
         $treeId = (int) app(CurrentTree::class)->id();
-        $allParentChild = app(TreeCacheService::class)->remember(
+        // Cache only plain arrays. Serializing an Eloquent Collection into a
+        // persistent cache may produce __PHP_Incomplete_Class after deploy,
+        // because PHP tries to restore it before all model classes are loaded.
+        $allParentChild = collect(app(TreeCacheService::class)->remember(
             $treeId,
-            'parent-child',
-            fn () => ParentChild::query()->get(['parent_id', 'child_id', 'type']),
-        );
-        $allPartnerships = app(TreeCacheService::class)->remember(
+            'parent-child-v2',
+            fn (): array => ParentChild::query()
+                ->get(['parent_id', 'child_id', 'type'])
+                ->map(fn (ParentChild $link): array => [
+                    'parent_id' => (int) $link->parent_id,
+                    'child_id' => (int) $link->child_id,
+                    'type' => $link->type,
+                ])
+                ->all(),
+        ))->map(fn (array $link): object => (object) $link);
+        $allPartnerships = collect(app(TreeCacheService::class)->remember(
             $treeId,
-            'partnerships',
-            fn () => Partnership::query()
-                ->get(['partner_one_id', 'partner_two_id', 'status', 'started_at', 'ended_at']),
-        );
+            'partnerships-v2',
+            fn (): array => Partnership::query()
+                ->get(['partner_one_id', 'partner_two_id', 'status', 'started_at', 'ended_at'])
+                ->map(fn (Partnership $link): array => [
+                    'partner_one_id' => (int) $link->partner_one_id,
+                    'partner_two_id' => (int) $link->partner_two_id,
+                    'status' => $link->status,
+                    'started_at' => $link->started_at?->toDateString(),
+                    'ended_at' => $link->ended_at?->toDateString(),
+                ])
+                ->all(),
+        ))->map(fn (array $link): object => (object) $link);
         $relatedIds = $allParentChild->pluck('parent_id')
             ->merge($allParentChild->pluck('child_id'))
             ->merge($allPartnerships->pluck('partner_one_id'))
@@ -270,8 +288,8 @@ class MiniAppController extends Controller
             'filters' => [
                 'cities' => app(TreeCacheService::class)->remember(
                     $treeId,
-                    'cities',
-                    fn () => Person::query()
+                    'cities-v2',
+                    fn (): array => Person::query()
                         ->where('is_published', true)
                         ->get(['current_city', 'birth_place', 'death_place', 'burial_place'])
                         ->flatMap(fn (Person $person): array => [
@@ -283,7 +301,8 @@ class MiniAppController extends Controller
                         ->filter()
                         ->unique()
                         ->sort()
-                        ->values(),
+                        ->values()
+                        ->all(),
                 ),
             ],
         ]);

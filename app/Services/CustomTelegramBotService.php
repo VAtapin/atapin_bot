@@ -73,13 +73,15 @@ class CustomTelegramBotService
         $response = Http::asJson()
             ->acceptJson()
             ->timeout(15)
-            ->post("https://api.telegram.org/bot{$token}/{$method}", $data)
-            ->throw()
-            ->json();
-        if (! ($response['ok'] ?? false)) {
-            throw new RuntimeException($response['description'] ?? 'Telegram отклонил запрос.');
+            ->post("https://api.telegram.org/bot{$token}/{$method}", $data);
+        $payload = (array) $response->json();
+
+        if (! $response->successful() || ! ($payload['ok'] ?? false)) {
+            throw new RuntimeException(
+                (string) ($payload['description'] ?? 'Telegram не ответил или отклонил запрос.'),
+            );
         }
 
-        return (array) ($response['result'] ?? []);
+        return (array) ($payload['result'] ?? []);
     }
 }

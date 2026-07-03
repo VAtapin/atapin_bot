@@ -19,6 +19,7 @@ use Filament\Pages\Tenancy\EditTenantProfile;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Hash;
 use Throwable;
 
@@ -92,11 +93,14 @@ class EditTreeProfile extends EditTenantProfile
                         ->label('Собственный домен')
                         ->helperText('Укажите только домен, например family.example.com. После сохранения подтвердите его через DNS.'),
                     Textarea::make('_domain_instructions')
-                        ->label('Подключение')
-                        ->default(fn (): string => app(CustomDomainService::class)->instructions($this->tenant))
+                        ->label('Как подключить домен')
+                        ->afterStateHydrated(fn (Textarea $component) => $component->state(
+                            app(CustomDomainService::class)->instructions($this->tenant->fresh()),
+                        ))
                         ->disabled()
                         ->dehydrated(false)
-                        ->rows(8)
+                        ->helperText('Сначала сохраните домен. Затем выполните показанные шаги по порядку и нажмите «Проверить DNS и SSL» вверху страницы.')
+                        ->rows(12)
                         ->columnSpanFull(),
                 ]),
             Section::make('Мессенджеры и собственный бот')
@@ -166,9 +170,12 @@ class EditTreeProfile extends EditTenantProfile
                             ->success()
                             ->send();
                     } catch (Throwable $exception) {
+                        report($exception);
                         Notification::make()
                             ->title('Не удалось подключить бота')
-                            ->body($exception->getMessage())
+                            ->body($exception instanceof QueryException
+                                ? 'Настройки бота не удалось сохранить в базе. Установите последнее обновление и повторите попытку.'
+                                : $exception->getMessage())
                             ->danger()
                             ->persistent()
                             ->send();
@@ -182,14 +189,27 @@ class EditTreeProfile extends EditTenantProfile
                     && $this->tenant->primary_domain
                 ))
                 ->action(function (): void {
-                    $result = app(CustomDomainService::class)->verify($this->tenant->fresh());
-                    Notification::make()
-                        ->title($result['verified'] ? 'Домен подтверждён' : 'Домен пока не подтверждён')
-                        ->body($result['error'] ?: 'DNS и HTTPS готовы. Домен активирован.')
-                        ->color($result['verified'] ? 'success' : 'warning')
-                        ->persistent()
-                        ->send();
-                    $this->fillForm();
+                    try {
+                        $result = app(CustomDomainService::class)->verify($this->tenant->fresh());
+                        $notification = Notification::make()
+                            ->title($result['verified'] ? 'Домен подтверждён' : 'Домен пока не подтверждён')
+                            ->body($result['error'] ?: 'DNS и HTTPS готовы. Домен активирован.')
+                            ->persistent();
+
+                        $result['verified']
+                            ? $notification->success()
+                            : $notification->warning();
+                        $notification->send();
+                        $this->fillForm();
+                    } catch (Throwable $exception) {
+                        report($exception);
+                        Notification::make()
+                            ->title('Не удалось проверить домен')
+                            ->body('Проверка DNS или HTTPS временно недоступна. Повторите попытку немного позже.')
+                            ->danger()
+                            ->persistent()
+                            ->send();
+                    }
                 }),
             Action::make('delete_tree')
                 ->label('Удалить дерево')

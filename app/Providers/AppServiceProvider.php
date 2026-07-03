@@ -24,7 +24,9 @@ use App\Observers\TelegramUserObserver;
 use App\Observers\TreeMembershipObserver;
 use App\Services\PlatformMailConfigurator;
 use App\Support\CurrentTree;
+use App\Support\FormHelp;
 use Carbon\Carbon;
+use Filament\Forms\Components\Field;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -42,6 +44,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Field::configureUsing(function (Field $field): void {
+            if ($help = FormHelp::for($field->getName())) {
+                $field->helperText($help);
+            }
+        });
         Carbon::setLocale((string) config('app.locale'));
         TelegramUser::observe(TelegramUserObserver::class);
         TreeMembership::observe(TreeMembershipObserver::class);

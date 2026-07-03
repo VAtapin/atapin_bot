@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\FamilyAuthController;
+use App\Http\Controllers\FaqController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\InvitationQrController;
 use App\Http\Controllers\LeaveTreeManagementController;
@@ -26,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicSiteController::class, 'home'])->name('home');
+Route::get('/faq', FaqController::class)->name('faq');
 Route::get('/page/{page:slug}', [PublicSiteController::class, 'page'])->name('public.page');
 Route::get('/page/{page:slug}/preview', [PublicSiteController::class, 'preview'])
     ->middleware('auth')

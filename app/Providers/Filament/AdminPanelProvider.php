@@ -8,6 +8,8 @@ use App\Filament\Resources\ChangeLogs\ChangeLogResource;
 use App\Filament\Resources\CmsPages\CmsPageResource;
 use App\Filament\Resources\DeletedTreeAudits\DeletedTreeAuditResource;
 use App\Filament\Resources\FamilyTrees\FamilyTreeResource;
+use App\Filament\Resources\FaqCategories\FaqCategoryResource;
+use App\Filament\Resources\FaqItems\FaqItemResource;
 use App\Filament\Resources\Payments\PaymentResource;
 use App\Filament\Resources\Plans\PlanResource;
 use App\Filament\Resources\PlatformSettings\PlatformSettingResource;
@@ -61,6 +63,8 @@ class AdminPanelProvider extends PanelProvider
                 PlatformSettingResource::class,
                 SmtpTestLogResource::class,
                 CmsPageResource::class,
+                FaqCategoryResource::class,
+                FaqItemResource::class,
                 TelegramUpdateResource::class,
                 ChangeLogResource::class,
             ])

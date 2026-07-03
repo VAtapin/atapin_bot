@@ -147,16 +147,24 @@ class CustomDomainService
     public function instructions(FamilyTree $tree): string
     {
         if (! $tree->primary_domain || ! $tree->domain_verification_token) {
-            return 'Введите домен и сохраните настройки.';
+            return "1. Введите домен без https:// и без пути, например family.example.com.\n"
+                ."2. Нажмите «Сохранить изменения».\n"
+                ."3. После сохранения здесь появятся точные TXT- и DNS-записи.\n"
+                ."4. Добавьте домен в Plesk как alias без перенаправления 301.\n"
+                ."5. Выпустите для него сертификат Let's Encrypt и нажмите «Проверить DNS и SSL».";
         }
+
+        $platformDomain = parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'idommoy.com';
 
         return "1. Добавьте TXT для _idommoy-verification.{$tree->primary_domain}\n"
             ."   Значение: idommoy-verification={$tree->domain_verification_token}\n"
-            ."2. Добавьте CNAME {$tree->primary_domain} → "
-            .(parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'idommoy.com')."\n"
-            ."3. В Plesk добавьте domain alias с document root httpdocs/public.\n"
-            ."4. Выпустите Let's Encrypt и нажмите «Проверить DNS и SSL».\n"
-            ."Статус: {$tree->domain_status}; SSL: {$tree->domain_ssl_status}.";
+            ."2. Для поддомена добавьте CNAME {$tree->primary_domain} → {$platformDomain}.\n"
+            ."   Для корневого домена добавьте A/AAAA на IP-адрес сервера из Plesk.\n"
+            ."3. В Plesk добавьте {$tree->primary_domain} как domain alias основного сайта.\n"
+            ."   Не включайте перенаправление 301: адрес семьи должен остаться в браузере.\n"
+            ."4. Включите {$tree->primary_domain} в сертификат Let's Encrypt.\n"
+            ."5. Подождите обновления DNS и нажмите «Проверить DNS и SSL».\n\n"
+            ."Текущий статус: {$tree->domain_status}; HTTPS: {$tree->domain_ssl_status}.";
     }
 
     private function checkSsl(string $domain): string

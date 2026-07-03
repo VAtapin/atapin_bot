@@ -33,6 +33,7 @@
         <nav>
             <a href="{{ route('public.page', 'about') }}">О проекте</a>
             <a href="{{ route('public.page', 'contacts') }}">Контакты</a>
+            <a href="{{ route('faq') }}">Помощь</a>
             @auth
                 <a class="button secondary" href="{{ route('trees.choose') }}">Мои деревья</a>
                 <a href="{{ route('account') }}">Безопасность</a>
@@ -53,6 +54,7 @@
 <footer>
     <div class="wrap">
         <span>© {{ date('Y') }} «Я и дом мой»</span>
+        <a href="{{ route('faq') }}">FAQ и быстрый старт</a>
         @foreach(($footerPages ?? collect()) as $footerPage)
             <a href="{{ route('public.page', $footerPage->slug) }}">{{ $footerPage->title }}</a>
         @endforeach

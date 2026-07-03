@@ -3,13 +3,16 @@
 namespace Tests\Feature;
 
 use App\Models\ParentChild;
+use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
 use App\Models\TelegramUser;
 use App\Models\TreeMembership;
 use App\Models\User;
+use App\Services\TreeCacheService;
 use App\Support\CurrentTree;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class MiniAppTest extends TestCase
@@ -119,6 +122,30 @@ class MiniAppTest extends TestCase
             ->assertJsonPath('viewer.has_person', true)
             ->assertJsonPath('viewer.person_id', (string) $person->id)
             ->assertJsonCount(1, 'people');
+    }
+
+    public function test_tree_relationship_cache_contains_only_plain_arrays(): void
+    {
+        $first = Person::factory()->create();
+        $second = Person::factory()->create();
+        Partnership::query()->create([
+            'partner_one_id' => $first->id,
+            'partner_two_id' => $second->id,
+            'status' => 'married',
+        ]);
+        $user = $this->telegramUser(771, 'approved', $first);
+        $treeId = (int) app(CurrentTree::class)->id();
+
+        $this->withSession(['family_telegram_user_id' => $user->id])
+            ->getJson('/api/family/tree?scope=all')
+            ->assertOk();
+
+        $version = app(TreeCacheService::class)->version($treeId);
+        $prefix = "family-tree-data:{$treeId}:{$version}:";
+
+        $this->assertIsArray(Cache::get($prefix.'parent-child-v2'));
+        $this->assertIsArray(Cache::get($prefix.'partnerships-v2'));
+        $this->assertIsArray(Cache::get($prefix.'cities-v2'));
     }
 
     public function test_relation_filter_can_show_grandchildren_and_person_route_sets_focus(): void

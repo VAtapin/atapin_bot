@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Support\Facades\Cache;
 
 class TreeCacheService
@@ -27,7 +28,13 @@ class TreeCacheService
         return Cache::remember(
             "family-tree-data:{$treeId}:{$version}:{$segment}",
             $seconds,
-            $callback,
+            function () use ($callback): mixed {
+                $value = $callback();
+
+                // Persistent cache must not contain framework objects: after a
+                // deployment PHP can restore them as __PHP_Incomplete_Class.
+                return $value instanceof Arrayable ? $value->toArray() : $value;
+            },
         );
     }
 }

@@ -875,7 +875,11 @@ async function loadTree() {
             showPerson(personId);
         }
     } catch (error) {
-        showError(error.message, error.payload);
+        if (state.lastTreeData) {
+            $('#tree-meta').textContent = 'Не удалось обновить данные. Показана последняя загруженная версия.';
+        } else {
+            showError(error.message, error.payload);
+        }
     } finally {
         setLoading(false);
     }
