@@ -76,4 +76,18 @@ class TotpAuthenticationTest extends TestCase
         $this->assertIsInt($counter);
         $this->assertFalse($totp->verify($secret, $code, $counter));
     }
+
+    public function test_required_user_is_sent_to_authenticator_setup_after_fallback_code(): void
+    {
+        $user = User::factory()->create(['two_factor_required' => true]);
+
+        $this->actingAs($user)
+            ->withSession([
+                'two_factor_code_hash' => Hash::make('123456'),
+                'two_factor_expires_at' => now()->addMinutes(10)->timestamp,
+                'two_factor_intended_url' => '/trees',
+            ])
+            ->post('/two-factor/challenge', ['code' => '123456'])
+            ->assertRedirect('/account/two-factor/setup');
+    }
 }

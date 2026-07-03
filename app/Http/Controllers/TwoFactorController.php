@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\TwoFactorCodeDelivery;
 use App\Services\TotpService;
+use App\Services\TwoFactorCodeDelivery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -47,6 +47,10 @@ class TwoFactorController extends Controller
         $delivery->deleteServerFallback($user);
         $request->session()->put('two_factor_user_id', $user->id);
         $request->session()->forget(['two_factor_code_hash', 'two_factor_expires_at']);
+
+        if ($user->two_factor_required && ! $user->two_factor_confirmed_at) {
+            return redirect()->route('totp.setup');
+        }
 
         return redirect()->to(
             (string) $request->session()->pull('two_factor_intended_url', '/trees'),

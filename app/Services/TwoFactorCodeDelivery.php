@@ -20,8 +20,7 @@ class TwoFactorCodeDelivery
         string $code,
         Carbon $expiresAt,
         bool $sendRemotely = true,
-    ): bool
-    {
+    ): bool {
         $serverFallbackWritten = $user->is_super_admin
             && $this->writeServerFallback($user, $code, $expiresAt);
 

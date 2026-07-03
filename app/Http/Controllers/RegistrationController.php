@@ -83,7 +83,8 @@ class RegistrationController extends Controller
                 'email' => mb_strtolower($data['email']),
                 'password' => $data['password'],
                 'is_active' => true,
-                'two_factor_enabled' => (bool) config('platform.require_owner_two_factor', true),
+                'two_factor_enabled' => false,
+                'two_factor_required' => false,
             ]);
             $plan = Plan::query()->where('code', 'family')->first();
             $tree = FamilyTree::query()->create([
@@ -123,7 +124,7 @@ class RegistrationController extends Controller
         $request->session()->regenerate();
         $request->session()->put('family_tree_id', $tree->id);
 
-        return redirect('/manage/'.$tree->slug);
+        return redirect()->route('account', ['welcome' => 1]);
     }
 
     private function availableSlugs(string $requested): array

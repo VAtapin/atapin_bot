@@ -35,7 +35,7 @@
             <a href="{{ route('public.page', 'contacts') }}">Контакты</a>
             @auth
                 <a class="button secondary" href="{{ route('trees.choose') }}">Мои деревья</a>
-                <a href="{{ route('account') }}">Способы входа</a>
+                <a href="{{ route('account') }}">Безопасность</a>
                 <form method="post" action="{{ route('logout') }}" style="display:inline">
                     @csrf
                     <button class="button" type="submit">Выйти</button>

@@ -22,11 +22,23 @@ class RequireOwnerTwoFactor
 
         $user = $request->user();
 
-        if (
-            ! $user
-            || ! $user->two_factor_enabled
-            || $request->session()->get('two_factor_user_id') === $user->id
-        ) {
+        if (! $user) {
+            return $next($request);
+        }
+
+        $requiresTwoFactor = $user->two_factor_enabled
+            || $user->two_factor_required
+            || $user->two_factor_confirmed_at;
+
+        if (! $requiresTwoFactor) {
+            return $next($request);
+        }
+
+        if ($request->session()->get('two_factor_user_id') === $user->id) {
+            if ($user->two_factor_required && ! $user->two_factor_confirmed_at) {
+                return redirect()->route('totp.setup');
+            }
+
             return $next($request);
         }
 

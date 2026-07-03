@@ -300,6 +300,6 @@ class RuntimeTodoTest extends TestCase
         $this->assertFalse($source->fresh()->is_active);
         $this->assertFalse($source->fresh()->is_super_admin);
         $this->assertTrue($target->fresh()->is_super_admin);
-        $this->assertTrue($target->fresh()->two_factor_enabled);
+        $this->assertTrue($target->fresh()->two_factor_required);
     }
 }

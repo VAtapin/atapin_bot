@@ -85,7 +85,7 @@ class TwoFactorServerFallbackTest extends TestCase
             ])
             ->post('/two-factor/challenge', ['code' => '123456']);
 
-        $response->assertRedirect('/trees');
+        $response->assertRedirect('/account/two-factor/setup');
         Storage::disk('local')->assertMissing("2fa/superadmin-{$user->id}.txt");
     }
 }

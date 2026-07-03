@@ -28,9 +28,12 @@ class TotpService
         ?int $lastUsedCounter = null,
     ): int|false {
         $google2fa = app(Google2FA::class);
-        $result = $lastUsedCounter === null
-            ? $google2fa->verifyKey($secret, $code, 1)
-            : $google2fa->verifyKeyNewer($secret, $code, $lastUsedCounter, 1);
+        $result = $google2fa->verifyKeyNewer(
+            $secret,
+            $code,
+            $lastUsedCounter ?? 0,
+            1,
+        );
 
         return $result === false ? false : (int) $result;
     }

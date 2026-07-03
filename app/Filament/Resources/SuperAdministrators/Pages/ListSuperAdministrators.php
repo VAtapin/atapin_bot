@@ -44,7 +44,7 @@ class ListSuperAdministrators extends ListRecords
                     $user = User::query()->findOrFail($data['user_id']);
                     $user->update([
                         'is_super_admin' => true,
-                        'two_factor_enabled' => true,
+                        'two_factor_required' => true,
                         'super_admin_assigned_by_user_id' => auth()->id(),
                         'super_admin_assigned_at' => now(),
                     ]);

@@ -37,7 +37,7 @@ class SuperAdministratorResource extends Resource
                 TextColumn::make('name')->label('Имя')->searchable(),
                 TextColumn::make('email')->label('Email')->searchable(),
                 TextColumn::make('externalIdentities.provider')->label('Способы входа')->badge(),
-                IconColumn::make('two_factor_enabled')->label('2FA')->boolean(),
+                IconColumn::make('two_factor_confirmed_at')->label('TOTP подключён')->boolean(),
                 IconColumn::make('is_active')->label('Активен')->boolean(),
                 TextColumn::make('super_admin_assigned_at')->label('Назначен')->dateTime('d.m.Y H:i'),
                 TextColumn::make('updated_at')->label('Последняя активность')->since(),
@@ -61,6 +61,7 @@ class SuperAdministratorResource extends Resource
                         abort_unless(Hash::check($data['password'], auth()->user()->password), 422, 'Неверный пароль.');
                         $record->update([
                             'is_super_admin' => false,
+                            'two_factor_required' => false,
                             'super_admin_assigned_by_user_id' => null,
                             'super_admin_assigned_at' => null,
                         ]);

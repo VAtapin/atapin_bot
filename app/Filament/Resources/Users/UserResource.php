@@ -66,11 +66,11 @@ class UserResource extends Resource
                     ->label('Суперадминистратор платформы')
                     ->default(false)
                     ->visible(fn (): bool => (bool) auth()->user()?->is_super_admin),
-                Toggle::make('two_factor_enabled')
-                    ->label('Двухфакторная защита')
+                Toggle::make('two_factor_required')
+                    ->label('Требовать двухфакторную защиту')
                     ->helperText(fn (?User $record): ?string => $record?->is_super_admin
-                        ? 'Для суперадминистратора двухфакторная защита обязательна.'
-                        : null)
+                        ? 'Для суперадминистратора требование включено всегда.'
+                        : 'При следующем входе пользователь должен будет подключить приложение-аутентификатор.')
                     ->disabled(fn (?User $record): bool => (bool) $record?->is_super_admin)
                     ->default(false),
             ]);
@@ -95,6 +95,12 @@ class UserResource extends Resource
                     ->boolean(),
                 IconColumn::make('is_super_admin')
                     ->label('Суперадмин')
+                    ->boolean(),
+                IconColumn::make('two_factor_confirmed_at')
+                    ->label('TOTP подключён')
+                    ->boolean(),
+                IconColumn::make('two_factor_required')
+                    ->label('2FA обязательна')
                     ->boolean(),
                 TextColumn::make('created_at')
                     ->dateTime()

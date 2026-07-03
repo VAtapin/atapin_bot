@@ -44,16 +44,18 @@ class TotpController extends Controller
         ])->save();
         $request->session()->forget('totp_setup_secret');
 
-        return redirect()->route('account')
+        $redirectTo = (string) $request->session()->pull('two_factor_intended_url');
+
+        return redirect()->to($redirectTo !== '' ? $redirectTo : route('account'))
             ->with('status', 'Приложение-аутентификатор подключено.');
     }
 
     public function destroy(Request $request, TotpService $totp): RedirectResponse
     {
         abort_if(
-            $request->user()->is_super_admin,
+            $request->user()->is_super_admin || $request->user()->two_factor_required,
             422,
-            'Суперадминистратор не может отключить обязательную двухфакторную защиту.',
+            'Администратор сделал двухфакторную защиту обязательной для этой учётной записи.',
         );
 
         $data = $request->validate(['code' => ['required', 'digits:6']]);

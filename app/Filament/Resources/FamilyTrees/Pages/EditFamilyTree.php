@@ -5,7 +5,6 @@ namespace App\Filament\Resources\FamilyTrees\Pages;
 use App\Filament\Resources\FamilyTrees\FamilyTreeResource;
 use App\Models\ChangeLog;
 use App\Models\TreeMembership;
-use App\Models\User;
 use App\Services\CustomDomainService;
 use Filament\Resources\Pages\EditRecord;
 
@@ -39,9 +38,6 @@ class EditFamilyTree extends EditRecord
                 'approved_at' => now(),
             ],
         );
-        User::query()->whereKey($this->record->owner_user_id)->update([
-            'two_factor_enabled' => true,
-        ]);
         if ($this->previousOwnerId) {
             TreeMembership::query()
                 ->where('tree_id', $this->record->id)
