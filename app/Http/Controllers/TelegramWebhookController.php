@@ -154,6 +154,21 @@ class TelegramWebhookController extends Controller
         $command = mb_strtolower($rawCommand);
         $command = preg_replace('/@[^ ]+$/', '', $command);
 
+        if (
+            $routeTree
+            && ($chat['type'] ?? null) === 'private'
+            && in_array($command, ['/start', '/help'], true)
+        ) {
+            try {
+                $this->bot->request('setChatMenuButton', [
+                    'chat_id' => $chat['id'],
+                    'menu_button' => ['type' => 'commands'],
+                ]);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
+
         if ($command === '/start' && preg_match('/^link_([a-z0-9]{32})$/', $arguments, $linkMatch)) {
             if ((int) $chat['id'] !== (int) $from['id']) {
                 $this->sendPrivateBotButton(

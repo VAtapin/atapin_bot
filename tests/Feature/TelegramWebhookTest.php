@@ -169,6 +169,9 @@ class TelegramWebhookTest extends TestCase
             'bot_scope' => 'tree:'.$secondTree->id,
             'telegram_update_id' => 777,
         ]);
+        Http::assertSent(fn ($request): bool => str_ends_with($request->url(), '/setChatMenuButton')
+            && data_get($request->data(), 'chat_id') === 901
+            && data_get($request->data(), 'menu_button.type') === 'commands');
     }
 
     public function test_approved_linked_user_can_receive_new_site_credentials(): void

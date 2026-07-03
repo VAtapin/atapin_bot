@@ -32,11 +32,23 @@ class CustomTelegramBotService
             $this->request($token, 'setMyCommands', [
                 'commands' => $this->commands(),
             ]);
+            $this->request($token, 'setMyCommands', [
+                'commands' => $this->commands(),
+                'scope' => ['type' => 'all_private_chats'],
+            ]);
+            $this->request($token, 'setMyCommands', [
+                'commands' => $this->commands(),
+                'scope' => ['type' => 'all_group_chats'],
+            ]);
             $this->request($token, 'setChatMenuButton', [
                 'menu_button' => ['type' => 'commands'],
             ]);
+            $menu = $this->request($token, 'getChatMenuButton');
             $webhook = $this->request($token, 'getWebhookInfo');
             $lastError = trim((string) ($webhook['last_error_message'] ?? ''));
+            if (($menu['type'] ?? null) !== 'commands') {
+                $lastError = 'Telegram не применил меню команд по умолчанию.';
+            }
             $isActive = ($webhook['url'] ?? null) === $url && $lastError === '';
 
             $tree->update([

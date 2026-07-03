@@ -27,6 +27,7 @@ class CustomTelegramBotTest extends TestCase
                 'ok' => true,
                 'result' => match ($method) {
                     'getMe' => ['username' => 'family_bot'],
+                    'getChatMenuButton' => ['type' => 'commands'],
                     'getWebhookInfo' => [
                         'url' => $webhookUrl,
                         'pending_update_count' => 0,

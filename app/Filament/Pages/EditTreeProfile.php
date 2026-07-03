@@ -111,7 +111,12 @@ class EditTreeProfile extends EditTenantProfile
                         ->label('Токен собственного Telegram-бота')
                         ->password()
                         ->revealable()
-                        ->helperText('Создайте бота в @BotFather. Токен хранится зашифрованно.')
+                        ->placeholder(fn (): string => $this->tenant->custom_bot_token
+                            ? 'Токен сохранён — введите новый только для замены'
+                            : 'Вставьте токен от @BotFather')
+                        ->helperText(fn (): string => $this->tenant->custom_bot_token
+                            ? 'Токен уже сохранён в зашифрованном виде и намеренно не показывается. Новый токен заменит старый.'
+                            : 'Создайте бота в @BotFather. Кнопка подключения сохранит токен в зашифрованном виде.')
                         ->afterStateHydrated(fn (TextInput $component) => $component->state(null))
                         ->dehydrated(fn (?string $state): bool => filled($state)),
                     TextInput::make('custom_bot_username')
@@ -214,6 +219,11 @@ class EditTreeProfile extends EditTenantProfile
                 ->visible(fn (): bool => (bool) $this->tenant->plan?->custom_bot)
                 ->action(function (): void {
                     try {
+                        $enteredToken = trim((string) ($this->data['custom_bot_token'] ?? ''));
+                        if ($enteredToken !== '') {
+                            $this->tenant->update(['custom_bot_token' => $enteredToken]);
+                        }
+
                         $bot = app(CustomTelegramBotService::class)->configure($this->tenant->fresh('plan'));
                     } catch (Throwable $exception) {
                         report($exception);
