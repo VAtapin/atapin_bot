@@ -125,7 +125,11 @@ async function api(path, options = {}) {
         const validationMessage = data.errors
             ? Object.values(data.errors).flat().join(' ')
             : null;
-        const error = new Error(validationMessage || data.message || 'Не удалось загрузить данные');
+        const serverMessage = response.status >= 500
+            ? 'Ошибка сервера. Обновите страницу или попробуйте ещё раз немного позже.'
+            : data.message;
+        const error = new Error(validationMessage || serverMessage || 'Не удалось загрузить данные');
+        error.status = response.status;
         error.payload = data;
         throw error;
     }
@@ -1543,16 +1547,17 @@ $('#report-issue-modal').addEventListener('click', (event) => {
 });
 $('#report-issue-form').addEventListener('submit', async (event) => {
     event.preventDefault();
+    const form = event.currentTarget;
     const message = $('#report-issue-message');
     message.textContent = 'Отправляем…';
 
     try {
         const result = await api('/api/family/issues', {
             method: 'POST',
-            body: formObject(event.currentTarget),
+            body: formObject(form),
         });
         message.textContent = result.message;
-        event.currentTarget.reset();
+        form.reset();
         window.setTimeout(() => { $('#report-issue-modal').hidden = true; }, 1300);
     } catch (error) {
         message.textContent = error.message;

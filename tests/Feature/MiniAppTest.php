@@ -83,6 +83,44 @@ class MiniAppTest extends TestCase
             ->assertJsonCount(1, 'people');
     }
 
+    public function test_super_admin_without_person_link_can_read_tree_without_my_family_tab(): void
+    {
+        $user = User::factory()->create(['is_super_admin' => true]);
+        Person::factory()->create();
+
+        $this->actingAs($user)
+            ->withSession(['family_tree_id' => app(CurrentTree::class)->id()])
+            ->getJson('/api/family/tree?scope=all')
+            ->assertOk()
+            ->assertJsonPath('viewer.role', 'super_admin')
+            ->assertJsonPath('viewer.has_person', false)
+            ->assertJsonCount(1, 'people');
+    }
+
+    public function test_owner_with_person_link_can_read_tree_and_open_my_family_tab(): void
+    {
+        $tree = app(CurrentTree::class)->get();
+        $person = Person::factory()->create();
+        $user = User::factory()->create();
+        $tree->update(['owner_user_id' => $user->id]);
+        TreeMembership::query()->create([
+            'tree_id' => $tree->id,
+            'user_id' => $user->id,
+            'person_id' => $person->id,
+            'role' => 'owner',
+            'status' => 'approved',
+        ]);
+
+        $this->actingAs($user)
+            ->withSession(['family_tree_id' => $tree->id])
+            ->getJson('/api/family/tree?scope=all')
+            ->assertOk()
+            ->assertJsonPath('viewer.role', 'owner')
+            ->assertJsonPath('viewer.has_person', true)
+            ->assertJsonPath('viewer.person_id', (string) $person->id)
+            ->assertJsonCount(1, 'people');
+    }
+
     public function test_relation_filter_can_show_grandchildren_and_person_route_sets_focus(): void
     {
         $grandparent = Person::factory()->create();

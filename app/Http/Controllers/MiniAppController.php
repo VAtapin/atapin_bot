@@ -79,8 +79,45 @@ class MiniAppController extends Controller
         $focusId = $this->focusId($request);
         $relationMap = $focusId ? $this->relationMap($focusId) : [];
         $relation = $request->string('relation')->toString();
+        $personColumns = [
+            'id',
+            'tree_id',
+            'first_name',
+            'middle_name',
+            'last_name',
+            'maiden_name',
+            'married_name',
+            'gender',
+            'birth_date',
+            'birth_date_precision',
+            'death_date',
+            'death_date_precision',
+            'birth_place',
+            'death_place',
+            'burial_place',
+            'current_city',
+            'current_address',
+            'occupation',
+            'bio',
+            'photo_path',
+            'photo_thumbnail_path',
+            'is_published',
+            'sort_order',
+        ];
+        $photoColumns = [
+            'id',
+            'tree_id',
+            'person_id',
+            'path',
+            'thumbnail_path',
+            'source_url',
+            'title',
+            'is_primary',
+            'sort_order',
+        ];
 
         $query = Person::query()
+            ->select($personColumns)
             ->where('is_published', true)
             ->when($request->string('q')->trim()->isNotEmpty(), function (Builder $query) use ($request): void {
                 $term = '%'.$request->string('q')->trim().'%';
@@ -131,7 +168,9 @@ class MiniAppController extends Controller
             ));
         }
 
-        $people = $query->with('photos')->get();
+        $people = $query
+            ->with(['photos' => fn ($query) => $query->select($photoColumns)])
+            ->get();
 
         $ids = $people->pluck('id');
         $parentChild = ParentChild::query()
@@ -166,7 +205,8 @@ class MiniAppController extends Controller
             ->merge($allPartnerships->pluck('partner_two_id'))
             ->unique();
         $peopleById = Person::query()
-            ->with('photos')
+            ->select($personColumns)
+            ->with(['photos' => fn ($query) => $query->select($photoColumns)])
             ->whereIn('id', $relatedIds)
             ->get()
             ->keyBy('id');
