@@ -9,12 +9,12 @@ use App\Models\PlatformSetting;
 use BackedEnum;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 
 class PlatformSettingResource extends Resource
@@ -32,16 +32,31 @@ class PlatformSettingResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            TextInput::make('key')->label('Ключ')->required()->unique(ignoreRecord: true),
-            TextInput::make('label')->label('Название')->required(),
+            TextInput::make('label')->label('Настройка')->disabled()->dehydrated(false),
+            TextInput::make('key')->label('Системный ключ')->disabled()->dehydrated(false),
+            Select::make('group')->label('Раздел')->options([
+                'general' => 'Общие',
+                'mail' => 'Почта и SMTP',
+                'billing' => 'Платежи',
+            ])->disabled()->dehydrated(false),
             Select::make('type')->label('Тип')->options([
                 'string' => 'Текст',
                 'integer' => 'Число',
                 'boolean' => 'Да / нет',
                 'json' => 'JSON',
-            ])->required(),
-            Textarea::make('value')->label('Значение')->columnSpanFull(),
-            Textarea::make('description')->label('Описание')->columnSpanFull(),
+            ])->disabled()->dehydrated(false),
+            TextInput::make('value')
+                ->label('Значение')
+                ->password(fn (?PlatformSetting $record): bool => (bool) $record?->is_secret)
+                ->revealable(fn (?PlatformSetting $record): bool => (bool) $record?->is_secret)
+                ->afterStateHydrated(function (TextInput $component, ?PlatformSetting $record): void {
+                    if ($record?->is_secret) {
+                        $component->state(null);
+                    }
+                })
+                ->dehydrated(fn (?string $state, ?PlatformSetting $record): bool => ! $record?->is_secret || filled($state))
+                ->helperText(fn (?PlatformSetting $record): ?string => $record?->description)
+                ->columnSpanFull(),
         ]);
     }
 
@@ -49,15 +64,33 @@ class PlatformSettingResource extends Resource
     {
         return $table->columns([
             TextColumn::make('label')->label('Настройка')->searchable(),
-            TextColumn::make('key')->label('Ключ')->copyable(),
-            TextColumn::make('value')->label('Значение')->limit(80),
+            TextColumn::make('group')->label('Раздел')->badge()
+                ->formatStateUsing(fn (string $state): string => match ($state) {
+                    'mail' => 'Почта и SMTP',
+                    'billing' => 'Платежи',
+                    default => 'Общие',
+                }),
+            TextColumn::make('value')->label('Значение')
+                ->formatStateUsing(fn (?string $state, PlatformSetting $record): string => $record->is_secret && filled($state) ? '••••••••' : (string) $state)
+                ->limit(80),
             TextColumn::make('updated_at')->label('Изменена')->dateTime('d.m.Y H:i'),
-        ])->recordActions([EditAction::make()]);
+        ])->filters([
+            SelectFilter::make('group')->label('Раздел')->options([
+                'general' => 'Общие',
+                'mail' => 'Почта и SMTP',
+                'billing' => 'Платежи',
+            ]),
+        ])->defaultSort('sort_order')->recordActions([EditAction::make()]);
     }
 
     public static function canViewAny(): bool
     {
         return (bool) auth()->user()?->is_super_admin;
+    }
+
+    public static function canCreate(): bool
+    {
+        return false;
     }
 
     public static function getPages(): array

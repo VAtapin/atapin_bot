@@ -6,6 +6,6 @@
 @section('content')
 <article class="content-card">
     <h1>{{ $page->title }}</h1>
-    <div>{!! nl2br(e($page->content)) !!}</div>
+    <div class="cms-content">{!! $page->content !!}</div>
 </article>
 @endsection

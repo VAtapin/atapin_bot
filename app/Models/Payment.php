@@ -14,9 +14,13 @@ class Payment extends Model
         'user_id',
         'provider',
         'provider_reference',
+        'idempotency_key',
         'status',
         'amount',
         'currency',
+        'description',
+        'period_starts_at',
+        'period_ends_at',
         'payload',
         'paid_at',
         'failed_at',
@@ -31,6 +35,8 @@ class Payment extends Model
             'paid_at' => 'datetime',
             'failed_at' => 'datetime',
             'refunded_at' => 'datetime',
+            'period_starts_at' => 'datetime',
+            'period_ends_at' => 'datetime',
         ];
     }
 

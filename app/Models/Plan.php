@@ -12,6 +12,7 @@ class Plan extends Model
         'code',
         'description',
         'storage_limit_bytes',
+        'storage_limit_mb',
         'people_limit',
         'member_limit',
         'backup_retention_days',
@@ -31,6 +32,16 @@ class Plan extends Model
             'custom_domain' => 'boolean',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function getStorageLimitMbAttribute(): int
+    {
+        return (int) round(((int) $this->storage_limit_bytes) / 1048576);
+    }
+
+    public function setStorageLimitMbAttribute(mixed $value): void
+    {
+        $this->attributes['storage_limit_bytes'] = max(1, (int) $value) * 1048576;
     }
 
     public function trees(): HasMany

@@ -18,5 +18,6 @@
         @if($label)
             <span style="opacity:.65">· {{ $label }}</span>
         @endif
+        <a href="{{ route('help', ['tree' => $tree->slug]) }}" style="margin-left:.35rem;color:inherit;text-decoration:underline">Справка</a>
     </div>
 @endif

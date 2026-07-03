@@ -144,4 +144,27 @@ GEDCOM);
             @unlink($path);
         }
     }
+
+    public function test_it_reassembles_utf8_characters_split_by_myheritage_conc_lines(): void
+    {
+        $path = storage_path('framework/testing-split-utf8.ged');
+        file_put_contents(
+            $path,
+            "\xEF\xBB\xBF0 HEAD\r\n1 CHAR UTF-8\r\n0 @I1@ INDI\r\n"
+            ."1 NAME Анна /Иванова/\r\n"
+            .'1 NOTE Истори'.chr(0xD1)."\r\n"
+            .'2 CONC '.chr(0x8F)." семьи\r\n"
+            ."0 TRLR\r\n",
+        );
+
+        try {
+            $this->assertSame(0, Artisan::call('gedcom:import', ['file' => $path]));
+            $this->assertSame(
+                'История семьи',
+                Person::query()->where('gedcom_id', 'I1')->firstOrFail()->bio,
+            );
+        } finally {
+            @unlink($path);
+        }
+    }
 }

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
 {
@@ -24,11 +25,18 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
         'timezone',
         'primary_domain',
         'accent_color',
+        'crest_path',
+        'custom_bot_token',
+        'custom_bot_username',
+        'custom_bot_webhook_secret',
+        'custom_bot_verified_at',
         'settings',
         'storage_used_bytes',
         'trial_ends_at',
         'last_activity_at',
         'deletion_scheduled_at',
+        'deletion_requested_by_user_id',
+        'deletion_reason',
     ];
 
     protected function casts(): array
@@ -39,6 +47,9 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
             'trial_ends_at' => 'datetime',
             'last_activity_at' => 'datetime',
             'deletion_scheduled_at' => 'datetime',
+            'custom_bot_token' => 'encrypted',
+            'custom_bot_webhook_secret' => 'encrypted',
+            'custom_bot_verified_at' => 'datetime',
         ];
     }
 
@@ -60,6 +71,23 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_user_id');
+    }
+
+    public function deletionRequestedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'deletion_requested_by_user_id');
+    }
+
+    public function getCrestUrlAttribute(): ?string
+    {
+        return $this->crest_path
+            ? Storage::disk('public')->url($this->crest_path)
+            : null;
+    }
+
+    public function isDeletionScheduled(): bool
+    {
+        return $this->status === 'deleting' && $this->deletion_scheduled_at !== null;
     }
 
     public function plan(): BelongsTo

@@ -13,21 +13,24 @@ class TreeInvitation extends Model
         'created_by_user_id',
         'person_id',
         'token_hash',
+        'token_ciphertext',
         'label',
         'role',
         'max_uses',
         'uses_count',
         'expires_at',
         'revoked_at',
+        'revoked_by_user_id',
     ];
 
-    protected $hidden = ['token_hash'];
+    protected $hidden = ['token_hash', 'token_ciphertext'];
 
     protected function casts(): array
     {
         return [
             'expires_at' => 'datetime',
             'revoked_at' => 'datetime',
+            'token_ciphertext' => 'encrypted',
         ];
     }
 
@@ -63,6 +66,18 @@ class TreeInvitation extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function revokedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'revoked_by_user_id');
+    }
+
+    public function getInvitationUrlAttribute(): ?string
+    {
+        return $this->token_ciphertext
+            ? route('tree.invitation', $this->token_ciphertext)
+            : null;
     }
 
     public function isUsable(): bool

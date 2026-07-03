@@ -19,7 +19,7 @@ const requestedTab = startAction?.tab ?? initialParams.get('tab');
 const state = {
     cytoscape: null,
     people: new Map(),
-    activeTab: ['tree', 'list', 'gallery', 'birthdays', 'me'].includes(requestedTab)
+    activeTab: ['tree', 'list', 'gallery', 'birthdays', 'events', 'me'].includes(requestedTab)
         ? requestedTab
         : 'tree',
     scope: startAction?.scope ?? 'branch',
@@ -76,7 +76,7 @@ function parseMiniAppStartParameter(value) {
         };
     }
 
-    match = normalized.match(/^tab_(tree|list|gallery|birthdays|me)$/);
+    match = normalized.match(/^tab_(tree|list|gallery|birthdays|events|me)$/);
     return match ? { tab: match[1], treeId } : null;
 }
 
@@ -946,6 +946,46 @@ async function loadGallery() {
     }
 }
 
+const eventIcons = {
+    birthday: '🎂',
+    anniversary: '💍',
+    wedding: '💒',
+    reunion: '👨‍👩‍👧‍👦',
+    memorial: '🕯️',
+    other: '📅',
+};
+
+function eventCards(items) {
+    return items.length
+        ? items.map((item) => `
+            <article class="event-card">
+                <span class="event-icon">${eventIcons[item.type] || '📅'}</span>
+                <div>
+                    <strong>${escapeHtml(item.title)}</strong>
+                    <time>${escapeHtml(formatDate(item.date))}${item.time ? ` · ${escapeHtml(String(item.time).slice(0, 5))}` : ''}</time>
+                    ${item.person_name ? `<small>${escapeHtml(item.person_name)}</small>` : ''}
+                    ${item.place ? `<small>📍 ${escapeHtml(item.place)}</small>` : ''}
+                    ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}
+                </div>
+                ${item.annual ? '<em>ежегодно</em>' : ''}
+            </article>
+        `).join('')
+        : '<p class="empty-list">Событий пока нет.</p>';
+}
+
+async function loadEvents() {
+    setLoading(true);
+    try {
+        const data = await api('/api/family/events');
+        $('#events-list').innerHTML = eventCards(data.upcoming);
+        $('#events-archive').innerHTML = eventCards(data.archive);
+    } catch (error) {
+        showError(error.message, error.payload);
+    } finally {
+        setLoading(false);
+    }
+}
+
 function showPhotoViewer(photo) {
     if (!photo) return;
 
@@ -1301,12 +1341,14 @@ function switchTab(tab) {
     $('#tree-view').hidden = !['tree', 'list'].includes(tab);
     $('#birthdays-view').hidden = tab !== 'birthdays';
     $('#gallery-view').hidden = tab !== 'gallery';
+    $('#events-view').hidden = tab !== 'events';
     $('#me-view').hidden = tab !== 'me';
     $('#tree').hidden = tab === 'list';
     $('#people-list').hidden = tab !== 'list';
     document.querySelector('.tree-controls').hidden = tab !== 'tree';
 
     if (tab === 'birthdays') loadBirthdays();
+    else if (tab === 'events') loadEvents();
     else if (tab === 'gallery') loadGallery();
     else if (tab === 'me') loadMe();
     else if (tab === 'list') {

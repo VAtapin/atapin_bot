@@ -82,6 +82,11 @@ class FamilyEventResource extends Resource
                     ->label('Показывать семье')
                     ->default(true)
                     ->required(),
+                TextInput::make('reminder_minutes')
+                    ->label('Напомнить за, минут')
+                    ->numeric()
+                    ->minValue(0)
+                    ->helperText('Оставьте пустым, если напоминание не требуется.'),
             ]);
     }
 

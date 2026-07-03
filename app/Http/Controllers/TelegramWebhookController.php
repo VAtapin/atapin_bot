@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FamilyEvent;
+use App\Models\FamilyTree;
 use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
@@ -33,7 +34,12 @@ class TelegramWebhookController extends Controller
 
     public function __invoke(Request $request): JsonResponse
     {
-        $secret = (string) config('services.telegram.webhook_secret');
+        $routeTree = $request->route('tree');
+        $routeTree = $routeTree instanceof FamilyTree ? $routeTree : null;
+        if ($routeTree) {
+            $this->currentTree->set($routeTree);
+        }
+        $secret = (string) ($routeTree?->custom_bot_webhook_secret ?: config('services.telegram.webhook_secret'));
         $receivedSecret = (string) $request->header('X-Telegram-Bot-Api-Secret-Token');
 
         if ($secret !== '' && ! hash_equals($secret, $receivedSecret)) {
@@ -67,7 +73,7 @@ class TelegramWebhookController extends Controller
 
         try {
             if ($message && $chat && $from) {
-                $this->handleMessage($message, $chat, $from);
+                $this->handleMessage($message, $chat, $from, $routeTree);
             }
 
             if ($callback) {
@@ -85,8 +91,12 @@ class TelegramWebhookController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    private function handleMessage(array $message, array $chat, array $from): void
-    {
+    private function handleMessage(
+        array $message,
+        array $chat,
+        array $from,
+        ?FamilyTree $routeTree = null,
+    ): void {
         $isAdmin = in_array((string) $from['id'], config('services.telegram.admin_ids', []), true);
 
         $user = TelegramUser::query()->firstOrNew(['telegram_user_id' => $from['id']]);
@@ -106,7 +116,7 @@ class TelegramWebhookController extends Controller
         $user->save();
 
         $group = null;
-        $tree = $user->currentTree;
+        $tree = $routeTree ?: $user->currentTree;
         $isGroupChat = in_array($chat['type'] ?? '', ['group', 'supergroup'], true);
 
         if ($isGroupChat && $tree) {
@@ -862,6 +872,7 @@ class TelegramWebhookController extends Controller
             '/list' => ['tab' => 'list', 'focus' => $user->person_id, 'scope' => 'branch'],
             '/photos' => ['tab' => 'gallery'],
             '/birthdays' => ['tab' => 'birthdays'],
+            '/events' => ['tab' => 'events'],
             '/me' => ['tab' => 'me'],
             '/grandchildren' => $user->person_id ? [
                 'tab' => 'list',

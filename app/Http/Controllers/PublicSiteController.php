@@ -31,4 +31,17 @@ class PublicSiteController extends Controller
                 ->get(['slug', 'title']),
         ]);
     }
+
+    public function preview(CmsPage $page): View
+    {
+        abort_unless(auth()->user()?->is_super_admin, 403);
+
+        return view('public.page', [
+            'page' => $page,
+            'footerPages' => CmsPage::query()
+                ->where('is_published', true)
+                ->orderBy('sort_order')
+                ->get(['slug', 'title']),
+        ]);
+    }
 }

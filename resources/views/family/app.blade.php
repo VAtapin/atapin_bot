@@ -10,16 +10,19 @@
     <script>
         window.familyAppConfig = @json($familyAppConfig);
     </script>
+    <style>:root{--family-accent:{{ $familyAccent }};--family-accent-text:{{ $familyAccentText }};}</style>
     @vite(['resources/js/app.js'])
 </head>
 <body>
     <main class="app-shell">
         <header class="topbar">
             <div class="brand">
-                <span class="brand-mark">🌳</span>
+                <span class="brand-mark">
+                    @if($familyCrestUrl)<img src="{{ $familyCrestUrl }}" alt="Семейный герб">@else 🌳 @endif
+                </span>
                 <div>
                     <h1>{{ $familyName }}</h1>
-                    <p>семейная история и память рода</p>
+                    <p>{{ $familySubtitle }}</p>
                 </div>
             </div>
             @if ($hasBrowserSession)
@@ -35,6 +38,7 @@
             <button class="tab" type="button" data-tab="list">Список</button>
             <button class="tab" type="button" data-tab="gallery">Фото</button>
             <button class="tab" type="button" data-tab="birthdays">Дни рождения</button>
+            <button class="tab" type="button" data-tab="events">События</button>
             <button class="tab" type="button" data-tab="me">Моя семья</button>
         </nav>
 
@@ -97,6 +101,15 @@
 
         <section id="gallery-view" class="gallery-view" hidden>
             <div id="gallery-grid" class="gallery-grid"></div>
+        </section>
+
+        <section id="events-view" class="events-view" hidden>
+            <h2>Семейные события</h2>
+            <div id="events-list" class="events-list"></div>
+            <details class="event-archive">
+                <summary>Прошедшие события</summary>
+                <div id="events-archive" class="events-list"></div>
+            </details>
         </section>
 
         <section id="me-view" class="me-view" hidden>

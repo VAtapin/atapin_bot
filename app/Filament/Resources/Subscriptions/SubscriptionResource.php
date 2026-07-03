@@ -4,13 +4,16 @@ namespace App\Filament\Resources\Subscriptions;
 
 use App\Filament\Resources\Subscriptions\Pages\EditSubscription;
 use App\Filament\Resources\Subscriptions\Pages\ListSubscriptions;
+use App\Models\PlatformSetting;
 use App\Models\Subscription;
 use App\Support\CurrentTree;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -39,6 +42,7 @@ class SubscriptionResource extends Resource
                 'trial' => 'Пробный период',
                 'active' => 'Активна',
                 'past_due' => 'Ожидает оплаты',
+                'grace' => 'Льготный период',
                 'cancelled' => 'Отменена',
                 'expired' => 'Истекла',
             ])->required(),
@@ -56,11 +60,46 @@ class SubscriptionResource extends Resource
         return $table->columns([
             TextColumn::make('tree.name')->label('Дерево'),
             TextColumn::make('plan.name')->label('Тариф'),
-            TextColumn::make('status')->label('Статус')->badge(),
+            TextColumn::make('status')->label('Статус')->badge()
+                ->formatStateUsing(fn (string $state): string => match ($state) {
+                    'trial' => 'Пробный период',
+                    'active' => 'Активна',
+                    'past_due' => 'Ожидает оплаты',
+                    'grace' => 'Льготный период',
+                    'cancelled' => 'Отменена',
+                    'expired' => 'Истекла',
+                    default => $state,
+                }),
+            TextColumn::make('next_billing_at')->label('Следующая оплата')->dateTime('d.m.Y'),
             TextColumn::make('amount')->label('Сумма'),
             TextColumn::make('ends_at')->label('До')->dateTime('d.m.Y'),
         ])->recordActions([
             EditAction::make()->visible(fn (): bool => (bool) auth()->user()?->is_super_admin),
+            Action::make('cancel')
+                ->label('Отменить в конце периода')
+                ->color('warning')
+                ->visible(fn (Subscription $record): bool => in_array($record->status, ['trial', 'active'], true)
+                    && (auth()->user()?->is_super_admin || auth()->user()?->ownsTree($record->tree)))
+                ->requiresConfirmation()
+                ->action(function (Subscription $record): void {
+                    $record->update(['cancel_at_period_end' => true, 'cancelled_at' => now()]);
+                    Notification::make()->title('Автопродление отключено')->success()->send();
+                }),
+            Action::make('archive')
+                ->label('Архивировать')
+                ->visible(fn (Subscription $record): bool => (bool) auth()->user()?->is_super_admin
+                    && in_array($record->status, ['cancelled', 'expired'], true)
+                    && ! $record->archived_at)
+                ->action(fn (Subscription $record) => $record->update(['archived_at' => now()])),
+            Action::make('pay')
+                ->label('Оплатить / продлить')
+                ->icon(Heroicon::OutlinedCreditCard)
+                ->visible(fn (): bool => ! auth()->user()?->is_super_admin
+                    && PlatformSetting::value('billing_enabled', false))
+                ->url(fn (Subscription $record): string => route('billing.checkout', [
+                    'tree' => $record->tree,
+                    'plan' => $record->plan,
+                ])),
         ]);
     }
 

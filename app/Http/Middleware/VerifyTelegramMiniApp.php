@@ -49,20 +49,29 @@ class VerifyTelegramMiniApp
                     $vkLaunchParams,
                     (string) config('services.vk.app_secret'),
                 );
-                $familyUser = $this->identities->resolve('vk', (string) $vkData['vk_user_id'], [
-                    'first_name' => 'Пользователь',
-                    'last_name' => 'VK',
-                    'language_code' => $vkData['vk_language'] ?? null,
-                    'launch_params' => $vkData,
-                ]);
-            } catch (InvalidArgumentException $exception) {
+                $familyUser = $this->identities->resolve(
+                    'vk',
+                    (string) $vkData['vk_user_id'],
+                    [
+                        'first_name' => 'Пользователь',
+                        'last_name' => 'VK',
+                        'language_code' => $vkData['vk_language'] ?? null,
+                        'launch_params' => $vkData,
+                    ],
+                    $familyUser,
+                );
+            } catch (Throwable $exception) {
                 return response()->json(['message' => $exception->getMessage()], 401);
             }
         } elseif ($initData !== '') {
             try {
                 $validated = $this->validator->validate(
                     $initData,
-                    (string) config('services.telegram.bot_token'),
+                    (string) (
+                        $tree?->custom_bot_verified_at && $tree?->custom_bot_token
+                            ? $tree->custom_bot_token
+                            : config('services.telegram.bot_token')
+                    ),
                 );
                 $telegramData = $validated['user'];
                 $telegramUser = TelegramUser::query()

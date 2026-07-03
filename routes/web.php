@@ -1,9 +1,14 @@
 <?php
 
+use App\Http\Controllers\AccountController;
+use App\Http\Controllers\BillingController;
 use App\Http\Controllers\FamilyAuthController;
+use App\Http\Controllers\HelpController;
+use App\Http\Controllers\InvitationQrController;
 use App\Http\Controllers\LeaveTreeManagementController;
 use App\Http\Controllers\MediaController;
 use App\Http\Controllers\MiniAppController;
+use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\PublicAuthController;
 use App\Http\Controllers\PublicSiteController;
 use App\Http\Controllers\RegistrationController;
@@ -19,14 +24,34 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicSiteController::class, 'home'])->name('home');
 Route::get('/page/{page:slug}', [PublicSiteController::class, 'page'])->name('public.page');
+Route::get('/page/{page:slug}/preview', [PublicSiteController::class, 'preview'])
+    ->middleware('auth')
+    ->name('public.page.preview');
 Route::get('/register', [RegistrationController::class, 'create'])->name('register');
 Route::post('/register', [RegistrationController::class, 'store'])->name('register.store');
 Route::get('/login', [PublicAuthController::class, 'create'])->name('login');
 Route::post('/login', [PublicAuthController::class, 'store'])
     ->middleware('throttle:20,1')
     ->name('login.store');
+Route::get('/forgot-password', [PasswordResetController::class, 'request'])->name('password.request');
+Route::post('/forgot-password', [PasswordResetController::class, 'email'])
+    ->middleware('throttle:5,1')
+    ->name('password.email');
+Route::get('/reset-password/{token}', [PasswordResetController::class, 'reset'])->name('password.reset');
+Route::post('/reset-password', [PasswordResetController::class, 'update'])->name('password.update');
 Route::post('/logout', [PublicAuthController::class, 'destroy'])->name('logout');
 Route::get('/trees', TreeChooserController::class)->middleware('auth')->name('trees.choose');
+Route::get('/help', HelpController::class)->middleware('auth')->name('help');
+Route::get('/account', [AccountController::class, 'show'])->middleware('auth')->name('account');
+Route::delete('/account/identities/{identity}', [AccountController::class, 'unlink'])
+    ->middleware('auth')
+    ->name('account.identities.unlink');
+Route::get('/billing/{tree:slug}/{plan}/checkout', [BillingController::class, 'checkout'])
+    ->middleware('auth')
+    ->name('billing.checkout');
+Route::get('/billing/{tree:slug}/return', [BillingController::class, 'returned'])
+    ->middleware('auth')
+    ->name('billing.return');
 Route::get('/tree-management/leave', LeaveTreeManagementController::class)
     ->middleware('auth')
     ->name('tree.management.leave');
@@ -38,6 +63,9 @@ Route::get('/access/pending', function (Request $request) {
     return view('public.pending', compact('tree'));
 })->name('access.pending');
 Route::get('/invite/{token}', TreeInvitationController::class)->name('tree.invitation');
+Route::get('/invitations/{invitation}/qr', InvitationQrController::class)
+    ->middleware('auth')
+    ->name('tree.invitation.qr');
 Route::get('/media/photos/{photo}', [MediaController::class, 'photo'])
     ->middleware(['signed', 'throttle:120,1'])
     ->name('media.photo');

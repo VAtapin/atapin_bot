@@ -4,7 +4,7 @@
 
 Подзаголовок: **«Семейная история и память рода»**.
 
-Основные домены: `idommoy.com` и `idommoy.ru`. Каждое дерево имеет собственный адрес вида `/family/atapiny`.
+Основной домен: `idommoy.com`. Остальные домены можно направить на него постоянным редиректом 301. Каждое дерево имеет собственный адрес вида `/family/ivanovy`.
 
 ---
 
@@ -56,6 +56,7 @@
 # Требования
 
 - PHP 8.3+
+- PHP extensions: `mbstring`, `intl`, `openssl`, `fileinfo`, `pdo_mysql`, `dom`, `xml`
 - Composer
 - Node.js 20+
 - MySQL / MariaDB
@@ -167,12 +168,12 @@ APP_URL=https://idommoy.com
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_DATABASE=atapin_bot
-DB_USERNAME=atapin_bot
+DB_DATABASE=idommoy
+DB_USERNAME=idommoy
 DB_PASSWORD=********
 
 TELEGRAM_BOT_TOKEN=********
-TELEGRAM_BOT_USERNAME=atapin_bot
+TELEGRAM_BOT_USERNAME=idommoy_bot
 TELEGRAM_WEBHOOK_SECRET=********
 TELEGRAM_MINI_APP_URL=https://idommoy.com/family
 TELEGRAM_ADMIN_IDS=123456789
@@ -330,10 +331,14 @@ php artisan serve
 
 # Обновление проекта
 
-После получения новой версии из GitHub выполнить:
+Безопасная последовательность обновления на Plesk:
 
 ```bash
-git pull
+cd /var/www/vhosts/idommoy.com/httpdocs
+
+/opt/plesk/php/8.5/bin/php artisan down
+
+git pull --ff-only
 ```
 
 ```bash
@@ -341,20 +346,37 @@ git pull
 ```
 
 ```bash
-npm install
+npm ci
 
 npm run build
 ```
 
 ```bash
+/opt/plesk/php/8.5/bin/php artisan migrate --force
+
+/opt/plesk/php/8.5/bin/php artisan storage:link
+
 /opt/plesk/php/8.5/bin/php artisan optimize:clear
+
+/opt/plesk/php/8.5/bin/php artisan config:cache
+
+/opt/plesk/php/8.5/bin/php artisan route:cache
+
+/opt/plesk/php/8.5/bin/php artisan view:cache
+
+/opt/plesk/php/8.5/bin/php artisan queue:restart
+
+/opt/plesk/php/8.5/bin/php artisan telegram:set-webhook
+
+/opt/plesk/php/8.5/bin/php artisan up
 ```
 
-Если изменялись миграции:
+После обновления:
 
-```bash
-/opt/plesk/php/8.5/bin/php artisan migrate
-```
+- в глобальной панели откройте «Настройки платформы → Почта и SMTP», заполните SMTP и нажмите «Проверить SMTP»;
+- при необходимости включите платежи там же и заполните Stripe либо ЮKassa;
+- тарифам с отдельным Telegram-ботом включите «Собственный бот», затем в настройках дерева укажите токен и нажмите «Проверить и подключить бота»;
+- убедитесь, что cron `schedule:run` продолжает выполняться каждую минуту.
 
 ---
 
@@ -424,11 +446,9 @@ php artisan gedcom:import family.ged --photos
 - даты и места брака/развода;
 - полный исходный GEDCOM-блок каждой карточки в `gedcom_data`.
 
-Импортёр не придумывает отсутствующие данные. В текущем `family.ged` есть
-386 человек, 147 семей, 358 ссылок на медиа и 36 записей проживания, но
-только 4 явных поля `CITY`. Фильтр Mini App дополнительно использует
-`PLAC` из мест рождения, смерти и захоронения; отсутствующие в GEDCOM
-города потребуется заполнить вручную.
+Импортёр не придумывает отсутствующие данные. Если в исходном GEDCOM нет
+отдельного поля `CITY`, фильтр дополнительно использует `PLAC` из мест
+рождения, смерти и захоронения. Недостающие города можно заполнить вручную.
 
 ---
 

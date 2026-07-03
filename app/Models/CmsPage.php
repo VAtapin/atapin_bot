@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\SafeHtml;
 use Illuminate\Database\Eloquent\Model;
 
 class CmsPage extends Model
@@ -13,13 +14,28 @@ class CmsPage extends Model
         'meta_title',
         'meta_description',
         'content',
+        'status',
         'is_published',
+        'published_at',
         'sort_order',
     ];
 
     protected function casts(): array
     {
-        return ['is_published' => 'boolean'];
+        return [
+            'is_published' => 'boolean',
+            'published_at' => 'datetime',
+        ];
+    }
+
+    public function setContentAttribute(?string $value): void
+    {
+        $this->attributes['content'] = app(SafeHtml::class)->clean($value);
+    }
+
+    public function versions()
+    {
+        return $this->hasMany(CmsPageVersion::class)->latest();
     }
 
     public function getRouteKeyName(): string

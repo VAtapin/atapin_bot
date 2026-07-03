@@ -12,6 +12,9 @@
                     ? '/manage/'.$membership->tree->slug
                     : route('family.tree', $membership->tree) }}">
                 {{ $membership->tree->name }} — {{ \App\Models\TreeMembership::ROLES[$membership->role] ?? $membership->role }}
+                @if($membership->tree->status === 'deleting')
+                    · удаление {{ $membership->tree->deletion_scheduled_at?->format('d.m.Y') }}
+                @endif
             </a>
         @empty
             <p>У вас пока нет подтверждённого доступа к семейным деревьям.</p>

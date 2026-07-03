@@ -21,6 +21,8 @@ class Subscription extends Model
         'next_billing_at',
         'grace_ends_at',
         'cancelled_at',
+        'cancel_at_period_end',
+        'archived_at',
     ];
 
     protected function casts(): array
@@ -32,6 +34,8 @@ class Subscription extends Model
             'next_billing_at' => 'datetime',
             'grace_ends_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'cancel_at_period_end' => 'boolean',
+            'archived_at' => 'datetime',
         ];
     }
 

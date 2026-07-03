@@ -18,7 +18,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 
-#[Fillable(['name', 'email', 'login', 'password', 'is_active', 'is_super_admin', 'two_factor_enabled', 'last_tree_id'])]
+#[Fillable(['name', 'email', 'login', 'password', 'is_active', 'is_super_admin', 'two_factor_enabled', 'last_tree_id', 'merged_into_user_id', 'merged_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, HasDefaultTenant, HasTenants
 {
@@ -38,6 +38,7 @@ class User extends Authenticatable implements FilamentUser, HasDefaultTenant, Ha
             'is_active' => 'boolean',
             'is_super_admin' => 'boolean',
             'two_factor_enabled' => 'boolean',
+            'merged_at' => 'datetime',
         ];
     }
 
@@ -126,7 +127,7 @@ class User extends Authenticatable implements FilamentUser, HasDefaultTenant, Ha
 
         if ($this->is_super_admin) {
             return FamilyTree::query()
-                ->where('status', 'active')
+                ->whereIn('status', ['active', 'deleting'])
                 ->orderBy('name')
                 ->get();
         }
@@ -134,7 +135,7 @@ class User extends Authenticatable implements FilamentUser, HasDefaultTenant, Ha
         return $this->trees()
             ->wherePivot('status', 'approved')
             ->wherePivotIn('role', ['owner', 'moderator'])
-            ->where('family_trees.status', 'active')
+            ->whereIn('family_trees.status', ['active', 'deleting'])
             ->orderBy('family_trees.name')
             ->get();
     }

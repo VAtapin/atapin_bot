@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\CurrentTree;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -10,7 +11,12 @@ class TelegramBot
 {
     public function request(string $method, array $data = []): mixed
     {
-        $token = (string) config('services.telegram.bot_token');
+        $tree = app(CurrentTree::class)->get();
+        $token = (string) (
+            $tree?->custom_bot_verified_at && $tree?->custom_bot_token
+                ? $tree->custom_bot_token
+                : config('services.telegram.bot_token')
+        );
 
         if ($token === '') {
             throw new RuntimeException('TELEGRAM_BOT_TOKEN is not configured.');

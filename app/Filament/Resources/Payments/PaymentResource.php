@@ -4,8 +4,12 @@ namespace App\Filament\Resources\Payments;
 
 use App\Filament\Resources\Payments\Pages\ListPayments;
 use App\Models\Payment;
+use App\Models\PlatformSetting;
+use App\Services\PaymentService;
 use App\Support\CurrentTree;
 use BackedEnum;
+use Filament\Actions\Action;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
@@ -32,12 +36,55 @@ class PaymentResource extends Resource
                 TextColumn::make('plan.name')->label('Тариф'),
                 TextColumn::make('provider')->label('Провайдер')->badge(),
                 TextColumn::make('provider_reference')->label('Номер')->copyable(),
+                TextColumn::make('description')->label('За что')->wrap(),
                 TextColumn::make('status')->label('Статус')->badge(),
                 TextColumn::make('amount')->label('Сумма')->money(
                     fn (Payment $record): string => $record->currency,
                 ),
                 TextColumn::make('paid_at')->label('Оплачен')->dateTime('d.m.Y H:i'),
                 TextColumn::make('created_at')->label('Создан')->dateTime('d.m.Y H:i'),
+            ])
+            ->recordActions([
+                Action::make('confirm')
+                    ->label('Подтвердить оплату')
+                    ->color('success')
+                    ->visible(fn (Payment $record): bool => (bool) auth()->user()?->is_super_admin
+                        && $record->provider === 'manual'
+                        && $record->status === 'pending')
+                    ->requiresConfirmation()
+                    ->action(function (Payment $record): void {
+                        app(PaymentService::class)->record(
+                            $record->tree,
+                            $record->plan,
+                            $record->provider,
+                            $record->provider_reference,
+                            'paid',
+                            $record->amount,
+                            $record->currency,
+                            ['confirmed_by_user_id' => auth()->id()],
+                            $record->user,
+                            $record->idempotency_key,
+                        );
+                        Notification::make()->title('Оплата подтверждена')->success()->send();
+                    }),
+                Action::make('refund')
+                    ->label('Отметить возврат')
+                    ->color('danger')
+                    ->visible(fn (Payment $record): bool => (bool) auth()->user()?->is_super_admin
+                        && $record->status === 'paid')
+                    ->requiresConfirmation()
+                    ->action(fn (Payment $record) => app(PaymentService::class)->record(
+                        $record->tree,
+                        $record->plan,
+                        $record->provider,
+                        $record->provider_reference,
+                        'refunded',
+                        $record->amount,
+                        $record->currency,
+                        ['refunded_by_user_id' => auth()->id()],
+                        $record->user,
+                        $record->idempotency_key,
+                    )),
             ])
             ->defaultSort('created_at', 'desc');
     }
@@ -56,7 +103,14 @@ class PaymentResource extends Resource
         $user = auth()->user();
         $tree = app(CurrentTree::class)->get();
 
-        return (bool) ($user?->is_super_admin || ($tree && $user?->ownsTree($tree)));
+        return (bool) (
+            $user?->is_super_admin
+            || (
+                PlatformSetting::value('billing_enabled', false)
+                && $tree
+                && $user?->ownsTree($tree)
+            )
+        );
     }
 
     public static function canCreate(): bool

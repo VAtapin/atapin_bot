@@ -6,12 +6,15 @@ use App\Filament\Resources\FamilyTrees\Pages\CreateFamilyTree;
 use App\Filament\Resources\FamilyTrees\Pages\EditFamilyTree;
 use App\Filament\Resources\FamilyTrees\Pages\ListFamilyTrees;
 use App\Models\FamilyTree;
+use App\Services\TreeDeletionService;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -59,6 +62,7 @@ class FamilyTreeResource extends Resource
                 'active' => 'Активно',
                 'suspended' => 'Приостановлено',
                 'archived' => 'Архив',
+                'deleting' => 'Ожидает удаления',
             ])->required(),
             TextInput::make('primary_domain')->label('Собственный домен'),
             Select::make('timezone')->label('Часовой пояс')->options([
@@ -95,6 +99,28 @@ class FamilyTreeResource extends Resource
                 ->label('Экспорт')
                 ->url(fn (FamilyTree $record): string => route('trees.export', $record)),
             EditAction::make(),
+            Action::make('schedule_deletion')
+                ->label('Удалить дерево')
+                ->color('danger')
+                ->icon(Heroicon::OutlinedTrash)
+                ->visible(fn (FamilyTree $record): bool => ! $record->isDeletionScheduled())
+                ->schema([
+                    TextInput::make('confirmation')
+                        ->label('Введите точное название дерева')
+                        ->required(),
+                    Textarea::make('reason')->label('Причина')->maxLength(1000),
+                ])
+                ->requiresConfirmation()
+                ->action(function (FamilyTree $record, array $data): void {
+                    abort_unless(hash_equals($record->name, (string) $data['confirmation']), 422, 'Название не совпадает.');
+                    app(TreeDeletionService::class)->schedule($record, auth()->user(), $data['reason'] ?? null);
+                    Notification::make()->title('Удаление запланировано через 30 дней')->warning()->send();
+                }),
+            Action::make('cancel_deletion')
+                ->label('Отменить удаление')
+                ->color('success')
+                ->visible(fn (FamilyTree $record): bool => $record->isDeletionScheduled())
+                ->action(fn (FamilyTree $record) => app(TreeDeletionService::class)->cancel($record, auth()->user())),
         ]);
     }
 

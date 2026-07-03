@@ -30,6 +30,7 @@ class CreateTreeInvitation extends CreateRecord
             'tree_id' => app(CurrentTree::class)->id(),
             'created_by_user_id' => auth()->id(),
             'token_hash' => hash('sha256', $this->plainToken),
+            'token_ciphertext' => $this->plainToken,
         ];
     }
 

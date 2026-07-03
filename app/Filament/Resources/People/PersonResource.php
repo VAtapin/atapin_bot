@@ -16,6 +16,7 @@ use App\Support\CurrentTree;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ForceDeleteBulkAction;
@@ -211,6 +212,15 @@ class PersonResource extends Resource
                     ->action(fn (Person $record, array $data) => app(PersonMergeService::class)
                         ->merge($record, Person::query()->findOrFail($data['target_id']))),
                 EditAction::make(),
+                DeleteAction::make()
+                    ->modalDescription(fn (Person $record): string => sprintf(
+                        'Будут затронуты: %d родительских связей, %d союзов, %d фотографий, %d альбомов и %d событий. Карточку можно восстановить из корзины.',
+                        $record->parentLinks()->count() + $record->childLinks()->count(),
+                        $record->partnershipsAsOne()->count() + $record->partnershipsAsTwo()->count(),
+                        $record->photos()->count(),
+                        $record->albums()->count(),
+                        $record->events()->count(),
+                    )),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

@@ -1,5 +1,6 @@
 {
     "$schema": "https://www.schemastore.org/package.json",
+    "name": "idommoy",
     "private": true,
     "type": "module",
     "scripts": {
@@ -16,6 +17,7 @@
     },
     "dependencies": {
         "@vkontakte/vk-bridge": "^3.0.2",
-        "cytoscape": "^3.34.0"
+        "cytoscape": "^3.34.0",
+        "qrcode": "^1.5.4"
     }
 }

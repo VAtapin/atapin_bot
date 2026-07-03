@@ -25,10 +25,8 @@ class TreeStorageService
                     ]);
                 }
             });
-        $bytes = (int) PersonPhoto::query()
-            ->withoutGlobalScope('family_tree')
-            ->where('tree_id', $tree->id)
-            ->sum('file_size');
+        $bytes = (int) collect(Storage::disk('public')->allFiles("trees/{$tree->id}"))
+            ->sum(fn (string $path): int => Storage::disk('public')->size($path));
         $tree->updateQuietly(['storage_used_bytes' => $bytes]);
         $limit = (int) ($tree->plan?->storage_limit_bytes ?? 536870912);
         if (

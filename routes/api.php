@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('/telegram/webhook', TelegramWebhookController::class)
     ->name('telegram.webhook');
+Route::post('/telegram/webhook/{tree:slug}', TelegramWebhookController::class)
+    ->name('telegram.custom-webhook');
 Route::post('/payments/webhook/{provider}', PaymentWebhookController::class)
     ->middleware('throttle:60,1')
     ->where('provider', '[a-z0-9_-]+')
@@ -19,6 +21,7 @@ Route::middleware(['web', 'telegram.webapp', 'family.tree'])->group(function ():
     Route::get('/family/tree', [MiniAppController::class, 'tree']);
     Route::get('/family/birthdays', [MiniAppController::class, 'birthdays']);
     Route::get('/family/gallery', [MiniAppController::class, 'gallery']);
+    Route::get('/family/events', [MiniAppController::class, 'events']);
     Route::post('/family/navigation', [MiniAppController::class, 'navigation']);
     Route::post('/family/issues', [DataIssueController::class, 'store']);
     Route::get('/family/privacy-export', [AccountPrivacyController::class, 'export']);

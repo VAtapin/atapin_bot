@@ -41,6 +41,13 @@ class ImportFileValidator
             throw new RuntimeException('Обнаружено исполняемое содержимое.');
         }
 
+        if ($format === 'gedcom') {
+            $decoded = app(GedcomFileReader::class)->read($path);
+            $this->validateGedcom($decoded['text']);
+
+            return;
+        }
+
         if ($format === 'gramps' && $extension === 'gramps') {
             $this->validateCompressedGramps($path, $sample);
 
@@ -52,11 +59,15 @@ class ImportFileValidator
         }
 
         match ($format) {
-            'gedcom' => $this->validateGedcom($sample),
             'gramps' => $this->validateXml($sample),
             'csv' => $this->validateCsv($sample),
             default => throw new RuntimeException('Неизвестный формат импорта.'),
         };
+    }
+
+    public function gedcomEncoding(string $path): string
+    {
+        return app(GedcomFileReader::class)->read($path)['encoding'];
     }
 
     public function validateUpload(string $format, mixed $value): void

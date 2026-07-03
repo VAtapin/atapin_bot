@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FamilyEvent;
 use App\Models\FamilyTree;
 use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
 use App\Models\Setting;
+use App\Services\ColorContrast;
 use App\Support\CurrentTree;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -26,6 +28,10 @@ class MiniAppController extends Controller
 
         return view('family.app', [
             'familyName' => $tree?->name ?: Setting::value('family_name', 'Наша семья'),
+            'familySubtitle' => $tree?->subtitle ?: 'Семейная история и память рода',
+            'familyCrestUrl' => $tree?->crest_url,
+            'familyAccent' => $tree?->accent_color ?: '#68734b',
+            'familyAccentText' => app(ColorContrast::class)->foreground($tree?->accent_color),
             'telegramAuthError' => session('telegram_auth_error'),
             'loginError' => session('login_error') ?: session('errors')?->first('login'),
             'initialFocusId' => $person?->id,
@@ -48,6 +54,7 @@ class MiniAppController extends Controller
                 'openPersonId' => $person?->id,
                 'treeId' => $tree?->id,
                 'treeSlug' => $tree?->slug,
+                'accentColor' => $tree?->accent_color,
                 'platform' => $request->query('platform', 'web'),
                 'vkAppId' => config('services.vk.app_id'),
             ],
@@ -522,6 +529,45 @@ class MiniAppController extends Controller
         return response()->json([
             'birthdays' => $birthdays,
             'anniversaries' => $anniversaries,
+        ]);
+    }
+
+    public function events(): JsonResponse
+    {
+        $today = now()->startOfDay();
+        $events = FamilyEvent::query()
+            ->with('person')
+            ->where('is_published', true)
+            ->get()
+            ->map(function (FamilyEvent $event) use ($today): array {
+                $nextDate = $event->event_date->copy();
+                if ($event->is_annual) {
+                    $nextDate->year($today->year);
+                    if ($nextDate->lt($today)) {
+                        $nextDate->addYear();
+                    }
+                }
+
+                return [
+                    'id' => (string) $event->id,
+                    'type' => $event->type,
+                    'title' => $event->title,
+                    'description' => $event->description,
+                    'date' => $nextDate->toDateString(),
+                    'time' => $event->event_time,
+                    'place' => $event->place,
+                    'annual' => $event->is_annual,
+                    'is_past' => ! $event->is_annual && $nextDate->lt($today),
+                    'person_id' => $event->person_id ? (string) $event->person_id : null,
+                    'person_name' => $event->person?->full_name,
+                ];
+            })
+            ->sortBy(fn (array $event): string => $event['date'].' '.($event['time'] ?? ''))
+            ->values();
+
+        return response()->json([
+            'upcoming' => $events->where('is_past', false)->values(),
+            'archive' => $events->where('is_past', true)->sortByDesc('date')->values(),
         ]);
     }
 }

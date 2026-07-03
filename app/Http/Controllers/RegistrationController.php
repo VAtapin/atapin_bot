@@ -12,8 +12,10 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 
 class RegistrationController extends Controller
@@ -29,10 +31,14 @@ class RegistrationController extends Controller
     {
         abort_unless(PlatformSetting::value('registration_enabled', true), 403);
 
-        $data = $request->validate([
+        $request->merge([
+            'email' => mb_strtolower(trim((string) $request->input('email'))),
+            'tree_slug' => Str::lower(trim((string) $request->input('tree_slug'))),
+        ]);
+        $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:120'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'confirmed', 'min:10'],
+            'password' => ['required', 'confirmed', Password::min(10)->letters()],
             'tree_name' => ['required', 'string', 'max:150'],
             'tree_slug' => [
                 'required',
@@ -42,7 +48,34 @@ class RegistrationController extends Controller
                 Rule::notIn(['person', 'login', 'register', 'admin', 'manage', 'api']),
                 'unique:family_trees,slug',
             ],
+        ], [
+            'required' => 'Заполните поле «:attribute».',
+            'email.email' => 'Введите корректный адрес электронной почты.',
+            'email.unique' => 'Этот email уже зарегистрирован. Войдите или восстановите доступ.',
+            'password.confirmed' => 'Пароли не совпадают.',
+            'password.min' => 'Пароль должен содержать не менее :min символов.',
+            'password.letters' => 'Пароль должен содержать хотя бы одну букву.',
+            'password.numbers' => 'Пароль должен содержать хотя бы одну цифру.',
+            'tree_slug.alpha_dash' => 'Адрес может содержать только латинские буквы, цифры, дефис и подчёркивание.',
+            'tree_slug.ascii' => 'Для адреса используйте только латинские символы.',
+            'tree_slug.not_in' => 'Этот адрес зарезервирован системой.',
+            'tree_slug.unique' => 'Этот адрес дерева уже занят.',
+        ], [
+            'name' => 'Ваше имя',
+            'email' => 'Email',
+            'password' => 'Пароль',
+            'tree_name' => 'Название семьи',
+            'tree_slug' => 'Адрес дерева',
         ]);
+        if ($validator->fails()) {
+            $response = back()->withErrors($validator)->withInput($request->except(['password', 'password_confirmation']));
+            if ($validator->errors()->has('tree_slug')) {
+                $response->with('slug_suggestions', $this->availableSlugs($request->string('tree_slug')->toString()));
+            }
+
+            return $response;
+        }
+        $data = $validator->validated();
 
         [$user, $tree] = DB::transaction(function () use ($data): array {
             $user = User::query()->create([
@@ -91,5 +124,17 @@ class RegistrationController extends Controller
         $request->session()->put('family_tree_id', $tree->id);
 
         return redirect('/manage/'.$tree->slug);
+    }
+
+    private function availableSlugs(string $requested): array
+    {
+        $base = Str::slug($requested) ?: 'family';
+
+        return collect(range(2, 20))
+            ->map(fn (int $suffix): string => $base.'-'.$suffix)
+            ->reject(fn (string $slug): bool => FamilyTree::withTrashed()->where('slug', $slug)->exists())
+            ->take(3)
+            ->values()
+            ->all();
     }
 }

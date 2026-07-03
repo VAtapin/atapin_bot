@@ -11,6 +11,7 @@ use App\Services\UserCredentialService;
 use App\Support\CurrentTree;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
@@ -96,7 +97,9 @@ class TreeMembershipResource extends Resource
                         ->success()
                         ->send();
                 }),
-            EditAction::make(),
+            EditAction::make()->visible(fn (TreeMembership $record): bool => static::canEdit($record)),
+            DeleteAction::make()
+                ->visible(fn (TreeMembership $record): bool => static::canDelete($record)),
         ]);
     }
 
@@ -132,7 +135,14 @@ class TreeMembershipResource extends Resource
 
     public static function canCreate(): bool
     {
-        return (bool) auth()->user()?->is_super_admin;
+        $tree = app(CurrentTree::class)->get();
+
+        return (bool) ($tree && auth()->user()?->canManageTree($tree));
+    }
+
+    public static function canDelete($record): bool
+    {
+        return $record->role !== 'owner' && static::canEdit($record);
     }
 
     public static function getPages(): array

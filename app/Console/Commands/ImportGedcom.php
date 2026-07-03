@@ -7,6 +7,8 @@ use App\Models\ParentChild;
 use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
+use App\Services\GedcomFileReader;
+use App\Services\ImportFileValidator;
 use App\Services\TreeStorageService;
 use App\Support\CurrentTree;
 use Illuminate\Console\Command;
@@ -15,7 +17,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use RuntimeException;
 use Throwable;
 
 class ImportGedcom extends Command
@@ -77,6 +78,16 @@ class ImportGedcom extends Command
             return self::FAILURE;
         }
 
+        try {
+            app(ImportFileValidator::class)->validate('gedcom', $file, basename($file));
+            $encoding = app(ImportFileValidator::class)->gedcomEncoding($file);
+            $this->line("Кодировка GEDCOM: {$encoding}");
+        } catch (Throwable $exception) {
+            $this->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
         $this->parseGedcom($file);
         $this->report();
 
@@ -131,17 +142,13 @@ class ImportGedcom extends Command
     private function parseGedcom(string $file): void
     {
         $this->gedcomDirectory = dirname(realpath($file) ?: $file);
-        $handle = fopen($file, 'rb');
-
-        if (! $handle) {
-            throw new RuntimeException("Невозможно открыть GEDCOM: {$file}");
-        }
+        $text = app(GedcomFileReader::class)->read($file)['text'];
 
         $recordType = null;
         $recordId = null;
         $recordLines = [];
 
-        while (($line = fgets($handle)) !== false) {
+        foreach (preg_split('/\n/', $text) ?: [] as $line) {
             $line = $this->cleanLine($line);
 
             if (preg_match('/^0 @([^@]+)@ (INDI|FAM|OBJE)$/', $line, $matches)) {
@@ -168,7 +175,6 @@ class ImportGedcom extends Command
         }
 
         $this->finishRecord($recordType, $recordId, $recordLines);
-        fclose($handle);
     }
 
     private function finishRecord(?string $type, ?string $id, array $lines): void
@@ -248,6 +254,10 @@ class ImportGedcom extends Command
             [$level, $tag, $value] = $this->lineParts($line);
 
             if ($level === null || $tag === null) {
+                if ($textTarget && $line !== '') {
+                    $person[$textTarget][$contextIndex] .= $line;
+                }
+
                 continue;
             }
 
@@ -452,16 +462,20 @@ class ImportGedcom extends Command
                     'burial_place' => $this->eventValue($source, 'BURI', 'PLAC'),
                     'current_city' => $residence['CITY'] ?? $residence['PLAC'] ?? null,
                     'current_address' => $this->residenceAddress($residence),
-                    'occupation' => collect($source['occupations'])->filter()->implode('; ') ?: null,
-                    'bio' => collect($source['notes'])->filter()->implode("\n\n") ?: null,
+                    'occupation' => collect($source['occupations'])
+                        ->map(fn (?string $value): ?string => $this->finalText($value))
+                        ->filter()->implode('; ') ?: null,
+                    'bio' => collect($source['notes'])
+                        ->map(fn (?string $value): ?string => $this->finalText($value))
+                        ->filter()->implode("\n\n") ?: null,
                     'photo_path' => $photoPath,
-                    'gedcom_data' => [
+                    'gedcom_data' => $this->sanitiseForJson([
                         'name' => $source['name'],
                         'events' => $source['events'],
                         'residences' => $source['residences'],
                         'photos' => $source['photos'],
                         'raw' => $source['raw'],
-                    ],
+                    ]),
                     'imported_at' => now(),
                     'is_published' => ! $this->isUnassociatedPhotosRecord($gedcomId, $source),
                 ],
@@ -535,10 +549,10 @@ class ImportGedcom extends Command
                         'started_at' => $this->familyEventDate($family, 'MARR'),
                         'ended_at' => $divorceDate,
                         'place' => $this->familyEventValue($family, 'MARR', 'PLAC'),
-                        'notes' => json_encode([
+                        'notes' => json_encode($this->sanitiseForJson([
                             'gedcom_id' => $family['gedcom_id'],
                             'raw' => $family['raw'],
-                        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                        ]), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                     ],
                 );
             }
@@ -750,7 +764,7 @@ class ImportGedcom extends Command
                 'title' => $photo['TITL'] ?? null,
                 'is_primary' => $isPrimary,
                 'sort_order' => $index,
-                'gedcom_data' => $photo,
+                'gedcom_data' => $this->sanitiseForJson($photo),
                 'file_size' => ($path ?? $record->path) && Storage::disk('public')->exists($path ?? $record->path)
                     ? Storage::disk('public')->size($path ?? $record->path)
                     : 0,
@@ -968,7 +982,9 @@ class ImportGedcom extends Command
 
     private function cleanLine(string $line): string
     {
-        return $this->cleanText(rtrim($line, "\r\n")) ?? '';
+        $line = rtrim($line, "\r\n");
+
+        return preg_replace('/^\xEF\xBB\xBF/', '', $line) ?? $line;
     }
 
     private function cleanText(?string $value): ?string
@@ -979,13 +995,39 @@ class ImportGedcom extends Command
 
         $value = preg_replace('/^\xEF\xBB\xBF/', '', $value);
 
-        if (! mb_check_encoding($value, 'UTF-8')) {
+        if (
+            ! mb_check_encoding($value, 'UTF-8')
+            && ! preg_match('/^[\x80-\xBF]/', $value)
+            && ! preg_match('/[\xC2-\xF4]$/', $value)
+        ) {
             $value = mb_convert_encoding($value, 'UTF-8', 'Windows-1251, ISO-8859-1');
         }
 
-        $value = iconv('UTF-8', 'UTF-8//IGNORE', $value);
+        return trim($value);
+    }
+
+    private function finalText(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (! mb_check_encoding($value, 'UTF-8')) {
+            $value = @iconv('UTF-8', 'UTF-8//IGNORE', $value);
+        }
 
         return $value === false ? null : trim($value);
+    }
+
+    private function sanitiseForJson(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return array_map(fn (mixed $item): mixed => $this->sanitiseForJson($item), $value);
+        }
+        if (is_string($value)) {
+            return $this->finalText($value);
+        }
+
+        return $value;
     }
 
     private function report(): void

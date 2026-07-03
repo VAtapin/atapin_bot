@@ -12,8 +12,10 @@ class ExternalIdentity extends Model
         'provider',
         'provider_user_id',
         'username',
+        'provider_email',
         'profile',
         'last_login_at',
+        'verified_at',
     ];
 
     protected function casts(): array
@@ -21,6 +23,7 @@ class ExternalIdentity extends Model
         return [
             'profile' => 'array',
             'last_login_at' => 'datetime',
+            'verified_at' => 'datetime',
         ];
     }
 

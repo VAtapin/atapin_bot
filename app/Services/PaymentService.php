@@ -21,6 +21,7 @@ class PaymentService
         string $currency,
         array $payload,
         ?User $user = null,
+        ?string $idempotencyKey = null,
     ): Payment {
         return DB::transaction(function () use (
             $tree,
@@ -32,6 +33,7 @@ class PaymentService
             $currency,
             $payload,
             $user,
+            $idempotencyKey,
         ): Payment {
             $subscription = Subscription::query()->firstOrCreate(
                 ['tree_id' => $tree->id],
@@ -49,9 +51,13 @@ class PaymentService
                     'subscription_id' => $subscription->id,
                     'plan_id' => $plan->id,
                     'user_id' => $user?->id,
+                    'idempotency_key' => $idempotencyKey,
                     'status' => $status,
                     'amount' => $amount,
                     'currency' => strtoupper($currency),
+                    'description' => "Тариф «{$plan->name}» на 1 месяц",
+                    'period_starts_at' => now(),
+                    'period_ends_at' => now()->addMonth(),
                     'payload' => $payload,
                     'paid_at' => $status === 'paid' ? now() : null,
                     'failed_at' => $status === 'failed' ? now() : null,

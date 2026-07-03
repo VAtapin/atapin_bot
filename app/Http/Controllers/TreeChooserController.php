@@ -13,7 +13,7 @@ class TreeChooserController extends Controller
             ->memberships()
             ->with('tree')
             ->where('status', 'approved')
-            ->whereHas('tree', fn ($query) => $query->where('status', 'active'))
+            ->whereHas('tree', fn ($query) => $query->whereIn('status', ['active', 'deleting']))
             ->orderBy('tree_id')
             ->get();
 

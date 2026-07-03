@@ -37,7 +37,17 @@ class TreeArchiveService
                 'format' => 'idommoy-tree-backup',
                 'version' => 1,
                 'created_at' => now()->toIso8601String(),
-                'tree' => $tree->withoutRelations()->toArray(),
+                'tree' => $tree->only([
+                    'name',
+                    'slug',
+                    'subtitle',
+                    'locale',
+                    'timezone',
+                    'primary_domain',
+                    'accent_color',
+                    'crest_path',
+                    'settings',
+                ]),
                 'tables' => [],
                 'files' => [],
             ];
@@ -50,12 +60,7 @@ class TreeArchiveService
                     ->all();
             }
 
-            foreach ($snapshot['tables']['person_photos'] as $photo) {
-                $path = $photo['path'] ?? null;
-                if (! $path || ! Storage::disk('public')->exists($path)) {
-                    continue;
-                }
-
+            foreach (Storage::disk('public')->allFiles("trees/{$tree->id}") as $path) {
                 $backupPath = $directory.'/files/'.$path;
                 Storage::disk('local')->put($backupPath, Storage::disk('public')->get($path));
                 $snapshot['files'][] = ['original' => $path, 'backup' => $backupPath];
@@ -100,6 +105,16 @@ class TreeArchiveService
         abort_unless(($snapshot['format'] ?? null) === 'idommoy-tree-backup', 422, 'Неизвестный формат копии.');
 
         DB::transaction(function () use ($backup, $snapshot): void {
+            $backup->tree->update(collect($snapshot['tree'] ?? [])->only([
+                'name',
+                'subtitle',
+                'locale',
+                'timezone',
+                'primary_domain',
+                'accent_color',
+                'crest_path',
+                'settings',
+            ])->all());
             foreach (array_reverse(self::TABLES) as $table) {
                 DB::table($table)->where('tree_id', $backup->tree_id)->delete();
             }
@@ -136,7 +151,17 @@ class TreeArchiveService
             'format' => 'idommoy-family-export',
             'version' => 1,
             'exported_at' => now()->toIso8601String(),
-            'tree' => $tree->withoutRelations()->toArray(),
+            'tree' => $tree->only([
+                'name',
+                'slug',
+                'subtitle',
+                'locale',
+                'timezone',
+                'primary_domain',
+                'accent_color',
+                'crest_path',
+                'settings',
+            ]),
             'tables' => [],
         ];
 

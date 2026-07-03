@@ -24,6 +24,7 @@ class FamilyEvent extends Model
         'place',
         'is_annual',
         'is_published',
+        'reminder_minutes',
     ];
 
     protected function casts(): array

@@ -17,3 +17,9 @@ Schedule::command('trees:backup')
 Schedule::command('platform:monitor')
     ->dailyAt('08:00')
     ->withoutOverlapping();
+Schedule::command('trees:purge-deleted')
+    ->dailyAt('03:30')
+    ->withoutOverlapping();
+Schedule::command('events:send-reminders')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();

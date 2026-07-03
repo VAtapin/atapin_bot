@@ -38,7 +38,14 @@ class PlanResource extends Resource
             Textarea::make('description')->label('Описание'),
             TextInput::make('price_monthly')->label('Цена в месяц')->numeric()->required(),
             TextInput::make('currency')->label('Валюта')->default('EUR')->required(),
-            TextInput::make('storage_limit_bytes')->label('Хранилище, байт')->numeric()->required(),
+            TextInput::make('storage_limit_mb')
+                ->label('Хранилище, МБ')
+                ->helperText('1024 МБ = 1 ГБ. Значение хранится внутри системы в байтах.')
+                ->numeric()
+                ->minValue(10)
+                ->maxValue(1048576)
+                ->suffix('МБ')
+                ->required(),
             TextInput::make('people_limit')->label('Лимит людей')->numeric()->required(),
             TextInput::make('member_limit')->label('Лимит участников')->numeric()->required(),
             TextInput::make('backup_retention_days')->label('Хранение копий, дней')->numeric()->required(),
@@ -55,6 +62,10 @@ class PlanResource extends Resource
             TextColumn::make('price_monthly')->label('Цена')->money(fn (Plan $record): string => $record->currency),
             TextColumn::make('people_limit')->label('Людей'),
             TextColumn::make('member_limit')->label('Участников'),
+            TextColumn::make('storage_limit_bytes')->label('Хранилище')
+                ->formatStateUsing(fn (int $state): string => $state >= 1073741824
+                    ? number_format($state / 1073741824, 1, ',', ' ').' ГБ'
+                    : number_format($state / 1048576, 0, ',', ' ').' МБ'),
             IconColumn::make('is_active')->label('Активен')->boolean(),
         ])->recordActions([EditAction::make()]);
     }

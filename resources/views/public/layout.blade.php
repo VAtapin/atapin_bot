@@ -20,7 +20,10 @@
         .content-card h1 { margin-top:0; font:700 38px/1.1 Georgia,serif }.content-card p { white-space:pre-line }
         label { display:grid; gap:5px } input,textarea,select { width:100%; padding:11px; border:1px solid var(--line); border-radius:10px; background:#fff }
         .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:15px }.form-grid .wide { grid-column:1/-1 }
-        .error { color:#a82929 } @media(max-width:700px){ nav>a:not(.button){display:none}.form-grid{grid-template-columns:1fr}.content-card{padding:22px} }
+        .error,.field-error { color:#a82929 }.field-invalid input{border-color:#c43d3d;box-shadow:0 0 0 3px rgb(196 61 61 / 12%)}
+        label small{color:var(--muted)}.field-error{font-weight:650}.slug-suggestion{margin:3px;padding:3px 7px;border:1px solid var(--line);border-radius:7px;background:var(--paper);color:var(--green);cursor:pointer}
+        .cms-content{line-height:1.7}.cms-content img{max-width:100%;height:auto;border-radius:12px}.cms-content blockquote{margin-left:0;padding-left:18px;border-left:4px solid var(--green);color:var(--muted)}
+        @media(max-width:700px){ nav>a:not(.button){display:none}.form-grid{grid-template-columns:1fr}.content-card{padding:22px} }
     </style>
 </head>
 <body>
@@ -32,6 +35,7 @@
             <a href="{{ route('public.page', 'contacts') }}">Контакты</a>
             @auth
                 <a class="button secondary" href="{{ route('trees.choose') }}">Мои деревья</a>
+                <a href="{{ route('account') }}">Способы входа</a>
                 <form method="post" action="{{ route('logout') }}" style="display:inline">
                     @csrf
                     <button class="button" type="submit">Выйти</button>

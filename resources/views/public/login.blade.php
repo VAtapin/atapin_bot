@@ -26,6 +26,7 @@
         <label class="wide">
             <span>Пароль</span>
             <input name="password" type="password" autocomplete="current-password" required>
+            <small><a href="{{ route('password.request') }}">Забыли пароль?</a></small>
         </label>
         <label class="wide" style="display:flex;grid-template-columns:auto 1fr;align-items:center">
             <input name="remember" type="checkbox" value="1" style="width:auto">

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FamilyTree;
 use App\Models\TelegramUser;
+use App\Models\User;
 use App\Services\AuthRedirector;
 use App\Services\ExternalIdentityService;
 use App\Services\TreeAccessService;
@@ -43,6 +44,7 @@ class TelegramLoginController extends Controller
             'created_at' => time(),
             'tree_id' => $tree?->id,
             'return_to' => SafeReturnUrl::path($request->query('return')),
+            'link_user_id' => $request->boolean('link') ? $request->user()?->id : null,
         ]);
 
         $query = http_build_query([
@@ -134,12 +136,15 @@ class TelegramLoginController extends Controller
         $tree = isset($oidc['tree_id'])
             ? FamilyTree::query()->whereKey($oidc['tree_id'])->where('status', 'active')->first()
             : null;
+        $linkUser = isset($oidc['link_user_id'])
+            ? User::query()->find($oidc['link_user_id'])
+            : null;
         $familyUser = app(ExternalIdentityService::class)->resolve('telegram', $telegramId, [
             'username' => $user->username,
             'first_name' => $user->first_name,
             'last_name' => $user->last_name,
             'photo_url' => $user->photo_url,
-        ]);
+        ], $linkUser);
         $user->updateQuietly(array_filter([
             'user_id' => $familyUser->id,
             'current_tree_id' => $tree?->id,

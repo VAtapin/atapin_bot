@@ -2,6 +2,11 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Resources\DataIssues\DataIssueResource;
+use App\Filament\Resources\FamilyEvents\FamilyEventResource;
+use App\Filament\Resources\People\PersonResource;
+use App\Filament\Resources\TelegramGroups\TelegramGroupResource;
+use App\Filament\Resources\TreeMemberships\TreeMembershipResource;
 use App\Models\FamilyEvent;
 use App\Models\Person;
 use App\Models\TelegramGroup;
@@ -25,19 +30,27 @@ class FamilyStats extends StatsOverviewWidget
 
         return [
             Stat::make('Людей в древе', Person::query()->where('is_published', true)->count())
-                ->description('Всего карточек: '.Person::query()->count()),
+                ->description('Всего карточек: '.Person::query()->count())
+                ->url(PersonResource::getUrl('index', tenant: $tree)),
             Stat::make('Ожидают доступа', (clone $pendingMemberships)->count())
                 ->description('Заявки участников')
+                ->url(TreeMembershipResource::getUrl('index', tenant: $tree))
                 ->color((clone $pendingMemberships)->exists() ? 'warning' : 'success'),
             Stat::make('Активные группы', TelegramGroup::query()->where('is_active', true)->count())
-                ->description('Подтверждённые семейные чаты'),
+                ->description('Подтверждённые семейные чаты')
+                ->url(TelegramGroupResource::getUrl('index', tenant: $tree)),
             Stat::make('События', FamilyEvent::query()->where('is_published', true)->count())
-                ->description('Опубликованные семейные даты'),
+                ->description('Опубликованные семейные даты')
+                ->url(FamilyEventResource::getUrl('index', tenant: $tree)),
             Stat::make('Хранилище', number_format($used / 1048576, 1, ',', ' ').' МБ')
                 ->description($limit > 0
                     ? "{$percent}% из ".number_format($limit / 1048576, 0, ',', ' ').' МБ'
                     : 'Без установленной квоты')
-                ->color($percent >= 90 ? 'danger' : ($percent >= 80 ? 'warning' : 'success')),
+                ->color($percent >= 90 ? 'danger' : ($percent >= 80 ? 'warning' : 'success'))
+                ->url(PersonResource::getUrl('index', tenant: $tree)),
+            Stat::make('Сообщения об ошибках', $tree?->dataIssues()->where('status', 'open')->count() ?? 0)
+                ->description('Открытые обращения семьи')
+                ->url(DataIssueResource::getUrl('index', tenant: $tree)),
         ];
     }
 }

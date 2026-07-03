@@ -9,14 +9,13 @@ use App\Models\CmsPage;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
-use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
@@ -40,8 +39,15 @@ class CmsPageResource extends Resource
             TextInput::make('title')->label('Заголовок')->required(),
             TextInput::make('meta_title')->label('SEO-заголовок'),
             Textarea::make('meta_description')->label('SEO-описание')->rows(2),
-            Textarea::make('content')->label('Содержимое')->rows(18)->required()->columnSpanFull(),
-            Toggle::make('is_published')->label('Опубликована')->default(true),
+            RichEditor::make('content')
+                ->label('Содержимое')
+                ->helperText('Можно использовать заголовки, списки, ссылки, цитаты и изображения. Опасный HTML удаляется автоматически.')
+                ->required()
+                ->columnSpanFull(),
+            Select::make('status')->label('Состояние')->options([
+                'draft' => 'Черновик',
+                'published' => 'Опубликована',
+            ])->default('published')->required(),
             TextInput::make('sort_order')->label('Порядок')->numeric()->default(0),
         ]);
     }
@@ -52,7 +58,8 @@ class CmsPageResource extends Resource
             TextColumn::make('title')->label('Страница')->searchable(),
             TextColumn::make('slug')->label('Адрес'),
             TextColumn::make('locale')->label('Язык')->badge(),
-            IconColumn::make('is_published')->label('Опубликована')->boolean(),
+            TextColumn::make('status')->label('Состояние')->badge()
+                ->formatStateUsing(fn (string $state): string => $state === 'published' ? 'Опубликована' : 'Черновик'),
             TextColumn::make('updated_at')->label('Изменена')->dateTime('d.m.Y H:i'),
         ])->recordActions([EditAction::make(), DeleteAction::make()]);
     }
