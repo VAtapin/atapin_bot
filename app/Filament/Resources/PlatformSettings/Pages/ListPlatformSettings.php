@@ -3,11 +3,11 @@
 namespace App\Filament\Resources\PlatformSettings\Pages;
 
 use App\Filament\Resources\PlatformSettings\PlatformSettingResource;
+use App\Services\SmtpDiagnosticsService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
-use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 class ListPlatformSettings extends ListRecords
@@ -28,13 +28,13 @@ class ListPlatformSettings extends ListRecords
                 ])
                 ->action(function (array $data): void {
                     try {
-                        Mail::raw(
-                            'SMTP платформы «Я и дом мой» настроен и работает.',
-                            fn ($message) => $message
-                                ->to($data['email'])
-                                ->subject('Проверка SMTP — Я и дом мой'),
-                        );
-                        Notification::make()->title('Тестовое письмо отправлено')->success()->send();
+                        $result = app(SmtpDiagnosticsService::class)->test($data['email'], auth()->id());
+                        Notification::make()
+                            ->title('SMTP-сервер принял тестовое письмо')
+                            ->body($result['message']."\nMessage-ID: ".$result['message_id'])
+                            ->success()
+                            ->persistent()
+                            ->send();
                     } catch (Throwable $exception) {
                         report($exception);
                         Notification::make()

@@ -32,6 +32,9 @@ class TreeImportService
                 default => throw new RuntimeException('Неизвестный формат импорта.'),
             };
             app(TreeStorageService::class)->recalculate($import->tree);
+            app(TreeCacheService::class)->bump($import->tree_id);
+            $integrity = app(TreeIntegrityService::class)->inspect($import->tree);
+            $statistics['integrity'] = $integrity['summary'];
             $import->update([
                 'status' => 'completed',
                 'statistics' => $statistics,

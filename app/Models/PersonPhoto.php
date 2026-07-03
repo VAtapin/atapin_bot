@@ -23,6 +23,7 @@ class PersonPhoto extends Model
         'uploaded_by_telegram_user_id',
         'gedcom_key',
         'path',
+        'thumbnail_path',
         'source_url',
         'title',
         'description',
@@ -31,6 +32,7 @@ class PersonPhoto extends Model
         'sort_order',
         'gedcom_data',
         'file_size',
+        'thumbnail_file_size',
     ];
 
     protected function casts(): array
@@ -146,8 +148,25 @@ class PersonPhoto extends Model
 
     public function getUrlAttribute(): ?string
     {
-        return $this->path
-            ? URL::temporarySignedRoute('media.photo', now()->addMinutes(30), ['photo' => $this->id])
+        return $this->path && Storage::disk('public')->exists($this->path)
+            ? URL::temporarySignedRoute(
+                'media.photo',
+                now()->startOfHour()->addHours(6),
+                ['photo' => $this->id],
+            )
             : $this->source_url;
+    }
+
+    public function getThumbnailUrlAttribute(): ?string
+    {
+        if ($this->thumbnail_path && Storage::disk('public')->exists($this->thumbnail_path)) {
+            return URL::temporarySignedRoute(
+                'media.photo-thumbnail',
+                now()->startOfMinute()->addHours(6),
+                ['photo' => $this->id],
+            );
+        }
+
+        return $this->url;
     }
 }

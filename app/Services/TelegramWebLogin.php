@@ -7,8 +7,11 @@ use App\Models\TelegramUser;
 
 class TelegramWebLogin
 {
-    public function createUrl(TelegramUser $user): string
-    {
+    public function createUrl(
+        TelegramUser $user,
+        ?string $targetHost = null,
+        ?string $returnPath = null,
+    ): string {
         $plainToken = bin2hex(random_bytes(32));
 
         TelegramLoginToken::query()->create([
@@ -23,6 +26,13 @@ class TelegramWebLogin
             ->where('expires_at', '<', now())
             ->delete();
 
-        return route('telegram.link-login', ['token' => $plainToken]);
+        $path = route('telegram.link-login', ['token' => $plainToken], false);
+        if ($returnPath) {
+            $path .= '?'.http_build_query(['return' => $returnPath]);
+        }
+
+        return $targetHost
+            ? 'https://'.$targetHost.$path
+            : url($path);
     }
 }

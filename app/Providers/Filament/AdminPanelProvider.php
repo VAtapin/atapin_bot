@@ -2,14 +2,18 @@
 
 namespace App\Providers\Filament;
 
-use App\Filament\Resources\ChangeLogs\ChangeLogResource;
+use App\Filament\Pages\AccountIntegrity;
 use App\Filament\Pages\SystemHealth;
+use App\Filament\Resources\ChangeLogs\ChangeLogResource;
 use App\Filament\Resources\CmsPages\CmsPageResource;
+use App\Filament\Resources\DeletedTreeAudits\DeletedTreeAuditResource;
 use App\Filament\Resources\FamilyTrees\FamilyTreeResource;
 use App\Filament\Resources\Payments\PaymentResource;
-use App\Filament\Resources\PlatformSettings\PlatformSettingResource;
 use App\Filament\Resources\Plans\PlanResource;
+use App\Filament\Resources\PlatformSettings\PlatformSettingResource;
+use App\Filament\Resources\SmtpTestLogs\SmtpTestLogResource;
 use App\Filament\Resources\Subscriptions\SubscriptionResource;
+use App\Filament\Resources\SuperAdministrators\SuperAdministratorResource;
 use App\Filament\Resources\TelegramUpdates\TelegramUpdateResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Filament\Widgets\PlatformStats;
@@ -48,11 +52,14 @@ class AdminPanelProvider extends PanelProvider
             ->sidebarCollapsibleOnDesktop()
             ->resources([
                 FamilyTreeResource::class,
+                DeletedTreeAuditResource::class,
                 UserResource::class,
+                SuperAdministratorResource::class,
                 PlanResource::class,
                 SubscriptionResource::class,
                 PaymentResource::class,
                 PlatformSettingResource::class,
+                SmtpTestLogResource::class,
                 CmsPageResource::class,
                 TelegramUpdateResource::class,
                 ChangeLogResource::class,
@@ -60,6 +67,7 @@ class AdminPanelProvider extends PanelProvider
             ->pages([
                 Dashboard::class,
                 SystemHealth::class,
+                AccountIntegrity::class,
             ])
             ->widgets([
                 AccountWidget::class,

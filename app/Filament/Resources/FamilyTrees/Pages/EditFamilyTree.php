@@ -3,9 +3,10 @@
 namespace App\Filament\Resources\FamilyTrees\Pages;
 
 use App\Filament\Resources\FamilyTrees\FamilyTreeResource;
-use App\Models\TreeMembership;
 use App\Models\ChangeLog;
+use App\Models\TreeMembership;
 use App\Models\User;
+use App\Services\CustomDomainService;
 use Filament\Resources\Pages\EditRecord;
 
 class EditFamilyTree extends EditRecord
@@ -21,6 +22,10 @@ class EditFamilyTree extends EditRecord
 
     protected function afterSave(): void
     {
+        if ($this->record->wasChanged('primary_domain')) {
+            app(CustomDomainService::class)->prepare($this->record);
+        }
+
         if ($this->record->owner_user_id === $this->previousOwnerId) {
             return;
         }

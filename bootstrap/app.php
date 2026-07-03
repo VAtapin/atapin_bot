@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Middleware\AuthorizeFamilyMedia;
+use App\Http\Middleware\CacheFamilyReadResponse;
+use App\Http\Middleware\ResolveCustomDomain;
 use App\Http\Middleware\ResolveFamilyTree;
 use App\Http\Middleware\VerifyTelegramMiniApp;
 use Illuminate\Foundation\Application;
@@ -15,9 +18,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->web(prepend: [
+            ResolveCustomDomain::class,
+        ]);
         $middleware->alias([
             'family.tree' => ResolveFamilyTree::class,
             'telegram.webapp' => VerifyTelegramMiniApp::class,
+            'family.media' => AuthorizeFamilyMedia::class,
+            'family.cache' => CacheFamilyReadResponse::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

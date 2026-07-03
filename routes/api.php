@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountPrivacyController;
+use App\Http\Controllers\CongratulationController;
 use App\Http\Controllers\DataIssueController;
 use App\Http\Controllers\FamilySelfServiceController;
 use App\Http\Controllers\MiniAppController;
@@ -17,11 +18,12 @@ Route::post('/payments/webhook/{provider}', PaymentWebhookController::class)
     ->where('provider', '[a-z0-9_-]+')
     ->name('payments.webhook');
 
-Route::middleware(['web', 'telegram.webapp', 'family.tree'])->group(function (): void {
+Route::middleware(['web', 'telegram.webapp', 'family.tree', 'family.cache'])->group(function (): void {
     Route::get('/family/tree', [MiniAppController::class, 'tree']);
     Route::get('/family/birthdays', [MiniAppController::class, 'birthdays']);
     Route::get('/family/gallery', [MiniAppController::class, 'gallery']);
     Route::get('/family/events', [MiniAppController::class, 'events']);
+    Route::post('/family/congratulations', [CongratulationController::class, 'store']);
     Route::post('/family/navigation', [MiniAppController::class, 'navigation']);
     Route::post('/family/issues', [DataIssueController::class, 'store']);
     Route::get('/family/privacy-export', [AccountPrivacyController::class, 'export']);

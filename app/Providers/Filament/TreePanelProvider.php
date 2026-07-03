@@ -2,8 +2,9 @@
 
 namespace App\Providers\Filament;
 
-use App\Filament\Resources\ChangeLogs\ChangeLogResource;
 use App\Filament\Pages\EditTreeProfile;
+use App\Filament\Pages\TreeIntegrity;
+use App\Filament\Resources\ChangeLogs\ChangeLogResource;
 use App\Filament\Resources\DataIssues\DataIssueResource;
 use App\Filament\Resources\FamilyEvents\FamilyEventResource;
 use App\Filament\Resources\ParentChildren\ParentChildResource;
@@ -23,10 +24,12 @@ use App\Http\Middleware\ApplyTreePanelContext;
 use App\Http\Middleware\RequireOwnerTwoFactor;
 use App\Models\FamilyTree;
 use Filament\Actions\Action;
+use Filament\Facades\Filament;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\NavigationItem;
 use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -57,10 +60,101 @@ class TreePanelProvider extends PanelProvider
             ->tenant(FamilyTree::class, slugAttribute: 'slug', ownershipRelationship: 'tree')
             ->tenantProfile(EditTreeProfile::class)
             ->searchableTenantMenu()
+            ->navigationItems([
+                NavigationItem::make('Открыть семейное дерево')
+                    ->icon('heroicon-o-share')
+                    ->sort(-100)
+                    ->url(fn (): string => route('tree.preview', [
+                        'tree' => Filament::getTenant(),
+                        'mode' => 'normal',
+                    ]))
+                    ->openUrlInNewTab(),
+                NavigationItem::make('Смотреть как участник')
+                    ->icon('heroicon-o-eye')
+                    ->sort(-99)
+                    ->url(fn (): string => route('tree.preview', [
+                        'tree' => Filament::getTenant(),
+                        'mode' => 'member',
+                    ])),
+                NavigationItem::make('Смотреть как гость')
+                    ->icon('heroicon-o-eye-slash')
+                    ->sort(-98)
+                    ->url(fn (): string => route('tree.preview', [
+                        'tree' => Filament::getTenant(),
+                        'mode' => 'guest',
+                    ])),
+                NavigationItem::make('Основные настройки')
+                    ->icon('heroicon-o-cog-6-tooth')
+                    ->sort(80)
+                    ->visible(fn (): bool => (bool) auth()->user()?->ownsTree(Filament::getTenant()))
+                    ->url(fn (): string => EditTreeProfile::getUrl(
+                        panel: 'tree',
+                        tenant: Filament::getTenant(),
+                    ).'#basic'),
+                NavigationItem::make('Оформление и герб')
+                    ->icon('heroicon-o-photo')
+                    ->sort(81)
+                    ->visible(fn (): bool => (bool) auth()->user()?->ownsTree(Filament::getTenant()))
+                    ->url(fn (): string => EditTreeProfile::getUrl(
+                        panel: 'tree',
+                        tenant: Filament::getTenant(),
+                    ).'#appearance'),
+                NavigationItem::make('Приватность')
+                    ->icon('heroicon-o-lock-closed')
+                    ->sort(82)
+                    ->visible(fn (): bool => (bool) auth()->user()?->ownsTree(Filament::getTenant()))
+                    ->url(fn (): string => EditTreeProfile::getUrl(
+                        panel: 'tree',
+                        tenant: Filament::getTenant(),
+                    ).'#privacy'),
+                NavigationItem::make('Уведомления')
+                    ->icon('heroicon-o-bell')
+                    ->sort(83)
+                    ->visible(fn (): bool => (bool) auth()->user()?->ownsTree(Filament::getTenant()))
+                    ->url(fn (): string => EditTreeProfile::getUrl(
+                        panel: 'tree',
+                        tenant: Filament::getTenant(),
+                    ).'#privacy'),
+                NavigationItem::make('Мессенджеры и бот')
+                    ->icon('heroicon-o-chat-bubble-left-right')
+                    ->sort(84)
+                    ->visible(fn (): bool => (bool) auth()->user()?->ownsTree(Filament::getTenant()))
+                    ->url(fn (): string => EditTreeProfile::getUrl(
+                        panel: 'tree',
+                        tenant: Filament::getTenant(),
+                    ).'#messengers'),
+                NavigationItem::make('Собственный домен')
+                    ->icon('heroicon-o-globe-alt')
+                    ->sort(85)
+                    ->visible(fn (): bool => (bool) (
+                        auth()->user()?->ownsTree(Filament::getTenant())
+                        && Filament::getTenant()?->plan?->custom_domain
+                    ))
+                    ->url(fn (): string => EditTreeProfile::getUrl(
+                        panel: 'tree',
+                        tenant: Filament::getTenant(),
+                    ).'#domain'),
+                NavigationItem::make('Выгрузить данные дерева')
+                    ->icon('heroicon-o-arrow-down-tray')
+                    ->sort(86)
+                    ->visible(fn (): bool => (bool) auth()->user()?->ownsTree(Filament::getTenant()))
+                    ->url(fn (): string => route('trees.export', Filament::getTenant())),
+                NavigationItem::make('Удаление дерева')
+                    ->icon('heroicon-o-trash')
+                    ->sort(87)
+                    ->visible(fn (): bool => (bool) auth()->user()?->ownsTree(Filament::getTenant()))
+                    ->url(fn (): string => EditTreeProfile::getUrl(
+                        panel: 'tree',
+                        tenant: Filament::getTenant(),
+                    )),
+            ])
             ->tenantMenuItems([
                 Action::make('open_family')
                     ->label('Открыть семейное дерево')
-                    ->url(fn (): string => route('family.tree', filament()->getTenant()))
+                    ->url(fn (): string => route('tree.preview', [
+                        'tree' => filament()->getTenant(),
+                        'mode' => 'normal',
+                    ]))
                     ->openUrlInNewTab(),
                 Action::make('export_tree')
                     ->label('Выгрузить данные дерева')
@@ -92,6 +186,7 @@ class TreePanelProvider extends PanelProvider
             ])
             ->pages([
                 Dashboard::class,
+                TreeIntegrity::class,
             ])
             ->widgets([
                 AccountWidget::class,

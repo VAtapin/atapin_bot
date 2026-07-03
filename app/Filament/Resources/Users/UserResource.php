@@ -68,6 +68,10 @@ class UserResource extends Resource
                     ->visible(fn (): bool => (bool) auth()->user()?->is_super_admin),
                 Toggle::make('two_factor_enabled')
                     ->label('Двухфакторная защита')
+                    ->helperText(fn (?User $record): ?string => $record?->is_super_admin
+                        ? 'Для суперадминистратора двухфакторная защита обязательна.'
+                        : null)
+                    ->disabled(fn (?User $record): bool => (bool) $record?->is_super_admin)
                     ->default(false),
             ]);
     }

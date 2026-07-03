@@ -5,6 +5,7 @@ namespace App\Filament\Resources\FamilyTrees\Pages;
 use App\Filament\Resources\FamilyTrees\FamilyTreeResource;
 use App\Models\Subscription;
 use App\Models\TreeMembership;
+use App\Services\CustomDomainService;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateFamilyTree extends CreateRecord
@@ -13,6 +14,9 @@ class CreateFamilyTree extends CreateRecord
 
     protected function afterCreate(): void
     {
+        if ($this->record->primary_domain) {
+            app(CustomDomainService::class)->prepare($this->record);
+        }
         if ($this->record->owner_user_id) {
             TreeMembership::query()->firstOrCreate([
                 'tree_id' => $this->record->id,

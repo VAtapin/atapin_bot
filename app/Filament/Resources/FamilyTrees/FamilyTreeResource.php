@@ -6,6 +6,7 @@ use App\Filament\Resources\FamilyTrees\Pages\CreateFamilyTree;
 use App\Filament\Resources\FamilyTrees\Pages\EditFamilyTree;
 use App\Filament\Resources\FamilyTrees\Pages\ListFamilyTrees;
 use App\Models\FamilyTree;
+use App\Services\CustomDomainService;
 use App\Services\TreeDeletionService;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -21,6 +22,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Hash;
 
 class FamilyTreeResource extends Resource
 {
@@ -64,7 +66,10 @@ class FamilyTreeResource extends Resource
                 'archived' => 'Архив',
                 'deleting' => 'Ожидает удаления',
             ])->required(),
-            TextInput::make('primary_domain')->label('Собственный домен'),
+            TextInput::make('primary_domain')
+                ->label('Собственный домен')
+                ->dehydrateStateUsing(fn (?string $state): ?string => app(CustomDomainService::class)->normalise($state))
+                ->unique(ignoreRecord: true),
             Select::make('timezone')->label('Часовой пояс')->options([
                 'Europe/Berlin' => 'Europe/Berlin',
                 'Europe/Moscow' => 'Europe/Moscow',
@@ -86,6 +91,13 @@ class FamilyTreeResource extends Resource
                 ->label('Хранилище')
                 ->formatStateUsing(fn (int $state): string => number_format($state / 1048576, 1, ',', ' ').' МБ'),
             TextColumn::make('status')->label('Статус')->badge(),
+            TextColumn::make('domain_status')->label('Домен')->badge()
+                ->formatStateUsing(fn (string $state): string => match ($state) {
+                    'active' => 'Активен',
+                    'verified' => 'DNS подтверждён',
+                    'pending_dns' => 'Ожидает DNS',
+                    default => 'Не настроен',
+                }),
         ])->recordActions([
             Action::make('select')
                 ->label('Открыть управление')
@@ -121,6 +133,29 @@ class FamilyTreeResource extends Resource
                 ->color('success')
                 ->visible(fn (FamilyTree $record): bool => $record->isDeletionScheduled())
                 ->action(fn (FamilyTree $record) => app(TreeDeletionService::class)->cancel($record, auth()->user())),
+            Action::make('purge_now')
+                ->label('Удалить навсегда сейчас')
+                ->color('danger')
+                ->icon(Heroicon::OutlinedNoSymbol)
+                ->visible(fn (): bool => (bool) auth()->user()?->is_super_admin)
+                ->schema([
+                    TextInput::make('confirmation')
+                        ->label('Введите slug дерева')
+                        ->required(),
+                    TextInput::make('password')
+                        ->label('Ваш пароль')
+                        ->password()
+                        ->required(),
+                    Textarea::make('reason')->label('Причина')->maxLength(1000),
+                ])
+                ->requiresConfirmation()
+                ->modalDescription('Дерево, люди и файлы будут удалены немедленно без возможности восстановления.')
+                ->action(function (FamilyTree $record, array $data): void {
+                    abort_unless(hash_equals($record->slug, (string) $data['confirmation']), 422, 'Slug не совпадает.');
+                    abort_unless(Hash::check((string) $data['password'], auth()->user()->password), 422, 'Неверный пароль.');
+                    app(TreeDeletionService::class)->purgeNow($record, auth()->user(), $data['reason'] ?? null);
+                    Notification::make()->title('Дерево окончательно удалено')->success()->send();
+                }),
         ]);
     }
 

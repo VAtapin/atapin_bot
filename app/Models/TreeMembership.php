@@ -22,6 +22,8 @@ class TreeMembership extends Model
         'tree_id',
         'user_id',
         'person_id',
+        'person_linked_at',
+        'person_linked_by_user_id',
         'role',
         'status',
         'permissions',
@@ -36,6 +38,7 @@ class TreeMembership extends Model
             'permissions' => 'array',
             'approved_at' => 'datetime',
             'last_seen_at' => 'datetime',
+            'person_linked_at' => 'datetime',
         ];
     }
 
@@ -58,6 +61,11 @@ class TreeMembership extends Model
             }
 
             if (! $membership->person_id) {
+                if ($membership->isDirty('person_id')) {
+                    $membership->person_linked_at = null;
+                    $membership->person_linked_by_user_id = null;
+                }
+
                 return;
             }
 
@@ -69,6 +77,23 @@ class TreeMembership extends Model
                 throw ValidationException::withMessages([
                     'person_id' => 'Карточка человека должна находиться в том же дереве.',
                 ]);
+            }
+
+            $duplicate = static::query()
+                ->where('tree_id', $membership->tree_id)
+                ->where('person_id', $membership->person_id)
+                ->when($membership->exists, fn ($query) => $query->whereKeyNot($membership->getKey()))
+                ->exists();
+
+            if ($duplicate) {
+                throw ValidationException::withMessages([
+                    'person_id' => 'Этот человек уже привязан к другой учётной записи.',
+                ]);
+            }
+
+            if ($membership->isDirty('person_id')) {
+                $membership->person_linked_at = now();
+                $membership->person_linked_by_user_id = auth()->id();
             }
         });
 
@@ -97,6 +122,11 @@ class TreeMembership extends Model
     public function person(): BelongsTo
     {
         return $this->belongsTo(Person::class);
+    }
+
+    public function personLinkedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'person_linked_by_user_id');
     }
 
     public function canManageTree(): bool

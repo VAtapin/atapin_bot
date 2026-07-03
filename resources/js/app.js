@@ -25,6 +25,8 @@ const state = {
     scope: startAction?.scope ?? 'branch',
     lastTreeData: null,
     galleryPhotos: new Map(),
+    galleryCursor: null,
+    galleryLoading: false,
     focusId: startAction?.focus
         ?? window.familyAppConfig?.focusId
         ?? initialParams.get('focus'),
@@ -32,7 +34,7 @@ const state = {
         ?? window.familyAppConfig?.openPersonId
         ?? null,
     treeId: startAction?.treeId ?? window.familyAppConfig?.treeId ?? null,
-    treeSlug: window.familyAppConfig?.treeSlug ?? null,
+    treeSlug: startAction?.treeId ? null : (window.familyAppConfig?.treeSlug ?? null),
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -646,10 +648,6 @@ function renderTree(data) {
         state.cytoscape.center(focusNode);
     }
 
-    if (state.scope === 'all' && focusNode?.length) {
-        state.cytoscape.zoom(0.8);
-        state.cytoscape.center(focusNode);
-    }
 }
 
 const relationLabels = {
@@ -841,6 +839,9 @@ async function loadTree() {
 
     try {
         const data = await api(`/api/family/tree?${treeQuery()}`);
+        if (state.treeSlug && data.tree?.slug && String(state.treeSlug) !== String(data.tree.slug)) {
+            throw new Error('Сервер вернул данные другого семейного дерева. Обновите страницу.');
+        }
         if (data.tree?.id) {
             state.treeId = data.tree.id;
             state.treeSlug = data.tree.slug;
@@ -848,6 +849,17 @@ async function loadTree() {
         state.lastTreeData = data;
         state.focusId = data.focus_id;
         state.people = new Map(data.people.map((person) => [String(person.id), person]));
+        if (data.tree?.name) document.querySelector('.brand h1').textContent = data.tree.name;
+        const meTab = document.querySelector('[data-tab="me"]');
+        if (meTab) meTab.hidden = !data.viewer?.has_person;
+        const birthdayTab = document.querySelector('[data-tab="birthdays"]');
+        if (birthdayTab) {
+            birthdayTab.textContent = data.viewer?.unread_congratulations > 0
+                ? `Дни рождения · ${data.viewer.unread_congratulations}`
+                : 'Дни рождения';
+        }
+        $('#my-branch').disabled = !data.viewer?.has_person;
+        $('#filters [name="relation"]').disabled = !data.viewer?.has_person;
         if (state.activeTab === 'tree') renderTree(data);
         renderList(data);
         fillCities(data.filters.cities);
@@ -883,32 +895,67 @@ async function loadBirthdays() {
 
     try {
         const data = await api('/api/family/birthdays');
+        const birthdayTab = document.querySelector('[data-tab="birthdays"]');
+        if (birthdayTab) birthdayTab.textContent = 'Дни рождения';
         $('#birthday-list').innerHTML = data.birthdays.length
             ? data.birthdays.map((item) => `
                 <article class="birthday-card">
-                    ${item.photo_url
-                        ? `<img src="${escapeHtml(item.photo_url)}" alt="">`
-                        : `<span class="birthday-avatar">${escapeHtml(item.name.slice(0, 1))}</span>`}
+                    <img src="${escapeHtml(item.photo_url)}" data-fallback="/images/person-placeholder.svg" alt="" loading="lazy">
                     <div>
                         <strong>${escapeHtml(item.name)}</strong>
                         <span>${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))} · ${item.age} лет</span>
                     </div>
-                    <em>${item.days === 0 ? 'сегодня' : `через ${item.days} дн.`}</em>
+                    <div class="birthday-side">
+                        <em>${item.days === 0 ? 'сегодня' : `через ${item.days} дн.`}</em>
+                        ${String(item.id) !== String(data.viewer_person_id ?? '')
+                            ? `<button class="congratulate-button" type="button" data-occasion="birthday" data-person-id="${item.id}" data-recipient="${escapeHtml(item.name)}">Поздравить</button>`
+                            : ''}
+                    </div>
                 </article>
             `).join('')
             : '<p class="empty-list">Дни рождения пока не добавлены.</p>';
         $('#anniversary-list').innerHTML = data.anniversaries?.length
             ? `<h3>Годовщины</h3>${data.anniversaries.map((item) => `
                 <article class="birthday-card anniversary-card">
-                    <span class="birthday-avatar">💍</span>
+                    <span class="couple-avatar">
+                        <img src="${escapeHtml(item.partner_one.photo_url)}" data-fallback="/images/person-placeholder.svg" alt="">
+                        <img src="${escapeHtml(item.partner_two.photo_url)}" data-fallback="/images/person-placeholder.svg" alt="">
+                    </span>
                     <div>
                         <strong>${escapeHtml(item.title)}</strong>
                         <span>${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))} · ${item.years} лет</span>
                     </div>
-                    <em>${item.days === 0 ? 'сегодня' : `через ${item.days} дн.`}</em>
+                    <div class="birthday-side">
+                        <em>${item.days === 0 ? 'сегодня' : `через ${item.days} дн.`}</em>
+                        <button class="congratulate-button" type="button" data-occasion="anniversary" data-partnership-id="${item.id}" data-recipient="${escapeHtml(item.title)}">Поздравить</button>
+                    </div>
                 </article>
             `).join('')}`
             : '';
+        $('#congratulation-inbox').innerHTML = data.congratulations?.length
+            ? `<h3>Полученные поздравления</h3>${data.congratulations.map((item) => `
+                <article class="congratulation-card">
+                    <strong>${escapeHtml(item.from)}</strong>
+                    <p>${escapeHtml(item.message)}</p>
+                    <small>${escapeHtml(new Date(item.created_at).toLocaleString('ru-RU'))}</small>
+                </article>
+            `).join('')}`
+            : '';
+        document.querySelectorAll('.congratulate-button').forEach((button) => {
+            button.addEventListener('click', () => {
+                const form = $('#congratulation-form');
+                form.reset();
+                form.elements.occasion.value = button.dataset.occasion;
+                form.elements.person_id.value = button.dataset.personId ?? '';
+                form.elements.partnership_id.value = button.dataset.partnershipId ?? '';
+                form.elements.message.value = button.dataset.occasion === 'birthday'
+                    ? 'С днём рождения! Желаю здоровья, радости и семейного тепла!'
+                    : 'Поздравляю с годовщиной! Желаю любви, согласия и ещё многих счастливых лет вместе!';
+                $('#congratulation-recipient').textContent = button.dataset.recipient ?? '';
+                $('#congratulation-message').textContent = '';
+                $('#congratulation-modal').hidden = false;
+            });
+        });
     } catch (error) {
         showError(error.message, error.payload);
     } finally {
@@ -916,32 +963,46 @@ async function loadBirthdays() {
     }
 }
 
-async function loadGallery() {
+async function loadGallery(reset = true) {
+    if (state.galleryLoading) return;
+    state.galleryLoading = true;
     setLoading(true);
 
     try {
-        const data = await api('/api/family/gallery');
-        state.galleryPhotos = new Map(data.photos.map((photo) => [String(photo.id), photo]));
-        $('#gallery-grid').innerHTML = data.photos.length
+        if (reset) {
+            state.galleryCursor = null;
+            state.galleryPhotos = new Map();
+            $('#gallery-grid').innerHTML = '';
+        }
+        const query = new URLSearchParams({ per_page: '36' });
+        if (state.galleryCursor) query.set('cursor', state.galleryCursor);
+        const data = await api(`/api/family/gallery?${query}`);
+        data.photos.forEach((photo) => state.galleryPhotos.set(String(photo.id), photo));
+        const markup = data.photos.length
             ? data.photos.map((photo) => `
                 <button class="gallery-item" type="button" data-photo-id="${photo.id}">
-                    <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.person_name)}" loading="lazy">
+                    <img src="${escapeHtml(photo.thumbnail_url ?? photo.url)}" data-fallback="/images/photo-placeholder.svg" alt="${escapeHtml(photo.person_name)}" loading="lazy" decoding="async">
                     <span>
                         <strong>${escapeHtml(photo.person_name)}</strong>
                         ${photo.taken_at ? `<small>${escapeHtml(formatDate(photo.taken_at))}</small>` : ''}
                     </span>
                 </button>
             `).join('')
-            : '<p class="empty-list">Фотографий пока нет.</p>';
-        $('#gallery-grid').querySelectorAll('[data-photo-id]').forEach((item) => {
+            : (reset ? '<p class="empty-list">Фотографий пока нет.</p>' : '');
+        $('#gallery-grid').insertAdjacentHTML('beforeend', markup);
+        $('#gallery-grid').querySelectorAll('[data-photo-id]:not([data-bound])').forEach((item) => {
+            item.dataset.bound = '1';
             item.addEventListener('click', () => {
                 const photo = state.galleryPhotos.get(String(item.dataset.photoId));
                 showPhotoViewer(photo);
             });
         });
+        state.galleryCursor = data.next_cursor;
+        $('#gallery-more').hidden = !data.has_more;
     } catch (error) {
         showError(error.message, error.payload);
     } finally {
+        state.galleryLoading = false;
         setLoading(false);
     }
 }
@@ -1349,7 +1410,7 @@ function switchTab(tab) {
 
     if (tab === 'birthdays') loadBirthdays();
     else if (tab === 'events') loadEvents();
-    else if (tab === 'gallery') loadGallery();
+    else if (tab === 'gallery') loadGallery(true);
     else if (tab === 'me') loadMe();
     else if (tab === 'list') {
         if (state.lastTreeData) renderList(state.lastTreeData);
@@ -1380,6 +1441,9 @@ async function syncMiniAppNavigation() {
 
         $('#filters [name="relation"]').value = action.relation ?? '';
         state.scope = action.scope ?? 'branch';
+        if (action.tree_id && String(action.tree_id) !== String(state.treeId ?? '')) {
+            state.treeSlug = null;
+        }
         state.treeId = action.tree_id ? String(action.tree_id) : state.treeId;
         if (action.tree_name) {
             document.querySelector('.brand h1').textContent = action.tree_name;
@@ -1427,6 +1491,13 @@ $('#all-tree').addEventListener('click', () => {
     $('#filters [name="q"]').value = '';
     loadTree();
 });
+$('#gallery-more').addEventListener('click', () => loadGallery(false));
+document.addEventListener('error', (event) => {
+    if (!(event.target instanceof HTMLImageElement)) return;
+    const fallback = event.target.dataset.fallback ?? '/images/person-placeholder.svg';
+    if (event.target.src.endsWith(fallback)) return;
+    event.target.src = fallback;
+}, true);
 $('#close-person').addEventListener('click', () => { $('#person-sheet').hidden = true; });
 $('#person-sheet').addEventListener('click', (event) => {
     if (event.target.id === 'person-sheet') event.currentTarget.hidden = true;
@@ -1440,6 +1511,32 @@ $('#report-issue-button').addEventListener('click', () => {
 });
 document.querySelector('.report-issue-close').addEventListener('click', () => {
     $('#report-issue-modal').hidden = true;
+});
+document.querySelector('.congratulation-close').addEventListener('click', () => {
+    $('#congratulation-modal').hidden = true;
+});
+$('#congratulation-modal').addEventListener('click', (event) => {
+    if (event.target.id === 'congratulation-modal') event.currentTarget.hidden = true;
+});
+$('#congratulation-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const payload = formObject(form);
+    payload.person_id = payload.person_id || null;
+    payload.partnership_id = payload.partnership_id || null;
+    try {
+        const result = await api('/api/family/congratulations', {
+            method: 'POST',
+            body: payload,
+        });
+        const telegramDelivered = result.deliveries?.filter((item) => item.telegram === 'delivered').length ?? 0;
+        $('#congratulation-message').textContent = telegramDelivered
+            ? `Сохранено на сайте и отправлено в Telegram: ${telegramDelivered}.`
+            : 'Сохранено на семейном сайте. Telegram у получателя не подключён или недоступен.';
+        setTimeout(() => { $('#congratulation-modal').hidden = true; }, 1800);
+    } catch (error) {
+        $('#congratulation-message').textContent = error.message;
+    }
 });
 $('#report-issue-modal').addEventListener('click', (event) => {
     if (event.target.id === 'report-issue-modal') event.currentTarget.hidden = true;

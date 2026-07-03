@@ -26,6 +26,9 @@
                 </div>
             </div>
             @if ($hasBrowserSession)
+                @if(!empty($familyAppConfig['managementUrl']))
+                    <a class="logout-button" href="{{ $familyAppConfig['managementUrl'] }}">Управление</a>
+                @endif
                 <form method="post" action="{{ route('family.logout') }}">
                     @csrf
                     <button class="logout-button" type="submit">Выйти</button>
@@ -97,10 +100,12 @@
             <p class="birthday-intro">Ближайшие дни рождения и годовщины</p>
             <div id="birthday-list" class="birthday-list"></div>
             <div id="anniversary-list" class="birthday-list"></div>
+            <div id="congratulation-inbox" class="congratulation-inbox"></div>
         </section>
 
         <section id="gallery-view" class="gallery-view" hidden>
             <div id="gallery-grid" class="gallery-grid"></div>
+            <button id="gallery-more" class="gallery-more" type="button" hidden>Показать ещё</button>
         </section>
 
         <section id="events-view" class="events-view" hidden>
@@ -134,6 +139,20 @@
             <input name="person_id" type="hidden">
             <button type="submit">Отправить владельцу дерева</button>
             <small id="report-issue-message"></small>
+        </form>
+    </aside>
+
+    <aside id="congratulation-modal" class="report-issue-modal" hidden>
+        <form id="congratulation-form" class="report-issue-card">
+            <button class="icon-button congratulation-close" type="button" aria-label="Закрыть">×</button>
+            <h2>Поздравить</h2>
+            <p id="congratulation-recipient"></p>
+            <input name="occasion" type="hidden">
+            <input name="person_id" type="hidden">
+            <input name="partnership_id" type="hidden">
+            <textarea name="message" placeholder="Напишите тёплые слова" required minlength="2" maxlength="1000"></textarea>
+            <button type="submit">Отправить поздравление</button>
+            <small id="congratulation-message"></small>
         </form>
     </aside>
 

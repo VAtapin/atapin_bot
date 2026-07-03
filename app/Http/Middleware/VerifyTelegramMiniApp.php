@@ -134,9 +134,25 @@ class VerifyTelegramMiniApp
         }
 
         if ($telegramUser) {
-            $familyUser = $telegramUser->user;
+            $telegramAccount = $telegramUser->user;
+            if (
+                $familyUser
+                && $telegramAccount
+                && (int) $familyUser->id !== (int) $telegramAccount->id
+            ) {
+                if ($initData !== '') {
+                    return response()->json([
+                        'message' => 'Этот Telegram уже подключён к другой учётной записи. Откройте «Способы входа» и выполните безопасное объединение.',
+                    ], 409);
+                }
 
-            if (! $familyUser) {
+                $request->session()->forget('family_telegram_user_id');
+                $telegramUser = null;
+            } elseif (! $familyUser) {
+                $familyUser = $telegramAccount;
+            }
+
+            if ($telegramUser && ! $familyUser) {
                 $familyUser = $this->identities->resolve(
                     'telegram',
                     $telegramUser->telegram_user_id,
@@ -190,20 +206,6 @@ class VerifyTelegramMiniApp
         $request->attributes->set('familyTree', $tree);
         $request->session()->put('family_tree_id', $tree->id);
 
-        if ($request->session()->has('family_person_id')) {
-            $person = Person::query()
-                ->where('web_login_enabled', true)
-                ->find($request->session()->get('family_person_id'));
-
-            if ($person) {
-                $request->attributes->set('familyPerson', $person);
-
-                return $next($request);
-            }
-
-            $request->session()->forget('family_person_id');
-        }
-
         if (! $familyUser) {
             return response()->json([
                 'message' => 'Сессия входа устарела. Войдите ещё раз.',
@@ -212,11 +214,14 @@ class VerifyTelegramMiniApp
             ], 401);
         }
 
+        $membership ??= $familyUser->memberships()
+            ->where('tree_id', $tree->id)
+            ->first();
         $membership ??= $familyUser->is_super_admin
             ? new TreeMembership([
                 'tree_id' => $tree->id,
                 'user_id' => $familyUser->id,
-                'role' => 'owner',
+                'role' => 'super_admin',
                 'status' => 'approved',
             ])
             : $this->treeAccess->membership($familyUser, $tree);
@@ -228,9 +233,16 @@ class VerifyTelegramMiniApp
             && $telegramUser?->isApproved()
             && (int) $telegramUser->current_tree_id === (int) $tree->id
         ) {
+            $legacyPersonId = $telegramUser->person_id
+                && Person::withoutGlobalScope('family_tree')
+                    ->whereKey($telegramUser->person_id)
+                    ->where('tree_id', $tree->id)
+                    ->exists()
+                    ? $telegramUser->person_id
+                    : null;
             $membership->update([
-                'person_id' => $telegramUser->person_id,
-                'role' => $telegramUser->person_id ? 'member' : 'guest',
+                'person_id' => $legacyPersonId,
+                'role' => $legacyPersonId ? 'member' : 'guest',
                 'status' => 'approved',
                 'approved_at' => now(),
             ]);
@@ -243,6 +255,19 @@ class VerifyTelegramMiniApp
             ], 403);
         }
 
+        $previewMode = $request->session()->get("tree_preview_role.{$tree->id}");
+        if (
+            in_array($previewMode, ['member', 'guest'], true)
+            && $familyUser->canManageTree($tree)
+        ) {
+            $membership = clone $membership;
+            $membership->role = $previewMode;
+            if ($previewMode === 'guest') {
+                $membership->person_id = null;
+            }
+            $request->attributes->set('treePreviewMode', $previewMode);
+        }
+
         if ($telegramUser) {
             $telegramUser->updateQuietly(['current_tree_id' => $tree->id]);
             $request->attributes->set('telegramUser', $telegramUser);
@@ -253,6 +278,28 @@ class VerifyTelegramMiniApp
         $request->session()->put('family_user_id', $familyUser->id);
         $request->attributes->set('familyUser', $familyUser);
         $request->attributes->set('treeMembership', $membership);
+
+        $person = null;
+        if ($membership->person_id) {
+            $person = Person::query()->find($membership->person_id);
+        }
+
+        if (! $person && $request->session()->has('family_person_id')) {
+            $legacyPersonId = (int) $request->session()->get('family_person_id');
+            if (
+                $membership->exists
+                && (int) $membership->person_id === $legacyPersonId
+            ) {
+                $person = Person::query()->find($legacyPersonId);
+            }
+        }
+
+        if ($person) {
+            $request->attributes->set('familyPerson', $person);
+            $request->session()->put('family_person_id', $person->id);
+        } else {
+            $request->session()->forget('family_person_id');
+        }
 
         return $next($request);
     }

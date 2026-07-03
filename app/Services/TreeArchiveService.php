@@ -17,6 +17,7 @@ class TreeArchiveService
         'parent_children',
         'partnerships',
         'family_events',
+        'congratulations',
         'photo_albums',
         'person_photos',
         'settings',

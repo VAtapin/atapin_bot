@@ -7,6 +7,7 @@ use App\Models\TelegramUser;
 use App\Models\User;
 use App\Services\AuthRedirector;
 use App\Services\ExternalIdentityService;
+use App\Services\TelegramWebLogin;
 use App\Services\TreeAccessService;
 use App\Support\SafeReturnUrl;
 use Firebase\JWT\JWK;
@@ -36,6 +37,19 @@ class TelegramLoginController extends Controller
                 ->where('status', 'active')
                 ->first()
             : null;
+        $returnHost = mb_strtolower($request->string('return_host')->toString());
+        if ($returnHost !== '') {
+            $hostTree = FamilyTree::query()
+                ->whereRaw('LOWER(primary_domain) = ?', [$returnHost])
+                ->where('domain_status', 'active')
+                ->where('status', 'active')
+                ->first();
+            if (! $hostTree || ($tree && ! $hostTree->is($tree))) {
+                $returnHost = '';
+            } else {
+                $tree ??= $hostTree;
+            }
+        }
 
         $request->session()->put('telegram_oidc', [
             'state' => $state,
@@ -44,6 +58,7 @@ class TelegramLoginController extends Controller
             'created_at' => time(),
             'tree_id' => $tree?->id,
             'return_to' => SafeReturnUrl::path($request->query('return')),
+            'return_host' => $returnHost ?: null,
             'link_user_id' => $request->boolean('link') ? $request->user()?->id : null,
         ]);
 
@@ -178,6 +193,18 @@ class TelegramLoginController extends Controller
         $request->session()->put('family_user_id', $familyUser->id);
         $request->session()->put('family_tree_id', $tree?->id);
         Auth::login($familyUser);
+
+        if (
+            ! empty($oidc['return_host'])
+            && $tree
+            && ($familyUser->is_super_admin || $membership?->status === 'approved')
+        ) {
+            return redirect()->away(app(TelegramWebLogin::class)->createUrl(
+                $user,
+                $oidc['return_host'],
+                SafeReturnUrl::path($oidc['return_to'] ?? null) ?: '/',
+            ));
+        }
 
         if (
             ($returnTo = SafeReturnUrl::path($oidc['return_to'] ?? null))

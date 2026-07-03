@@ -11,6 +11,7 @@ use App\Filament\Resources\People\RelationManagers\ParentLinksRelationManager;
 use App\Filament\Resources\People\RelationManagers\PartnershipsRelationManager;
 use App\Filament\Resources\People\RelationManagers\PhotosRelationManager;
 use App\Models\Person;
+use App\Models\TreeMembership;
 use App\Services\PersonMergeService;
 use App\Support\CurrentTree;
 use BackedEnum;
@@ -19,7 +20,9 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ForceDeleteAction;
 use Filament\Actions\ForceDeleteBulkAction;
+use Filament\Actions\RestoreAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -59,7 +62,27 @@ class PersonResource extends Resource
             ->components([
                 TextInput::make('_tree_context')
                     ->label('Семейное дерево')
-                    ->default(fn (): string => app(CurrentTree::class)->get()?->name ?? '')
+                    ->afterStateHydrated(fn (TextInput $component) => $component->state(
+                        filament()->getTenant()?->name
+                            ?? app(CurrentTree::class)->get()?->name
+                            ?? 'Дерево не выбрано',
+                    ))
+                    ->default(fn (): string => filament()->getTenant()?->name
+                        ?? app(CurrentTree::class)->get()?->name
+                        ?? 'Дерево не выбрано')
+                    ->disabled()
+                    ->dehydrated(false),
+                TextInput::make('_linked_account')
+                    ->label('Учётная запись и доступ')
+                    ->afterStateHydrated(fn (TextInput $component, ?Person $record) => $component->state(
+                        $record?->memberships()
+                            ->with('user')
+                            ->get()
+                            ->map(fn ($membership): string => ($membership->user?->name ?: 'Пользователь')
+                                .' · '.(TreeMembership::ROLES[$membership->role] ?? $membership->role)
+                                .' · '.$membership->status)
+                            ->join('; ') ?: 'Не привязан',
+                    ))
                     ->disabled()
                     ->dehydrated(false),
                 TextInput::make('first_name')
@@ -221,6 +244,9 @@ class PersonResource extends Resource
                         $record->albums()->count(),
                         $record->events()->count(),
                     )),
+                RestoreAction::make(),
+                ForceDeleteAction::make()
+                    ->modalDescription('Карточка, её фотографии и файлы будут удалены окончательно без возможности восстановления.'),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

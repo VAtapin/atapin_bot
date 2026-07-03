@@ -16,6 +16,7 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
 
     protected $fillable = [
         'owner_user_id',
+        'start_person_id',
         'plan_id',
         'name',
         'slug',
@@ -24,6 +25,12 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
         'locale',
         'timezone',
         'primary_domain',
+        'domain_status',
+        'domain_verification_token',
+        'domain_verified_at',
+        'domain_ssl_status',
+        'domain_checked_at',
+        'domain_last_error',
         'accent_color',
         'crest_path',
         'custom_bot_token',
@@ -50,6 +57,8 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
             'custom_bot_token' => 'encrypted',
             'custom_bot_webhook_secret' => 'encrypted',
             'custom_bot_verified_at' => 'datetime',
+            'domain_verified_at' => 'datetime',
+            'domain_checked_at' => 'datetime',
         ];
     }
 
@@ -71,6 +80,11 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_user_id');
+    }
+
+    public function startPerson(): BelongsTo
+    {
+        return $this->belongsTo(Person::class, 'start_person_id');
     }
 
     public function deletionRequestedBy(): BelongsTo

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\TreeMemberships;
 use App\Filament\Resources\TreeMemberships\Pages\CreateTreeMembership;
 use App\Filament\Resources\TreeMemberships\Pages\EditTreeMembership;
 use App\Filament\Resources\TreeMemberships\Pages\ListTreeMemberships;
+use App\Models\Person;
 use App\Models\TelegramUser;
 use App\Models\TreeMembership;
 use App\Services\UserCredentialService;
@@ -43,7 +44,8 @@ class TreeMembershipResource extends Resource
             Select::make('person_id')->label('Человек в дереве')
                 ->relationship('person', 'last_name')
                 ->getOptionLabelFromRecordUsing(fn ($record): string => $record->full_name)
-                ->searchable(['first_name', 'last_name', 'middle_name']),
+                ->searchable(['first_name', 'last_name', 'middle_name'])
+                ->helperText('Эта привязка определяет «Мою семью» и центрального человека на семейном сайте.'),
             Select::make('role')->label('Роль')
                 ->options(function (): array {
                     if (auth()->user()?->is_super_admin) {
@@ -78,11 +80,48 @@ class TreeMembershipResource extends Resource
             TextColumn::make('user.name')->label('Пользователь')->searchable(),
             TextColumn::make('user.email')->label('Email')->searchable(),
             TextColumn::make('person.full_name')->label('Человек в дереве'),
+            TextColumn::make('person_linked_at')->label('Привязан')->dateTime('d.m.Y H:i'),
             TextColumn::make('role')->label('Роль')->badge()
                 ->formatStateUsing(fn (string $state): string => TreeMembership::ROLES[$state] ?? $state),
             TextColumn::make('status')->label('Доступ')->badge(),
             TextColumn::make('last_seen_at')->label('Активность')->dateTime('d.m.Y H:i'),
         ])->recordActions([
+            Action::make('link_person')
+                ->label(fn (TreeMembership $record): string => $record->person_id
+                    ? 'Изменить привязку'
+                    : 'Привязать к человеку')
+                ->icon(Heroicon::OutlinedLink)
+                ->visible(fn (TreeMembership $record): bool => static::canEdit($record))
+                ->schema([
+                    Select::make('person_id')
+                        ->label('Человек в дереве')
+                        ->options(fn (TreeMembership $record): array => Person::query()
+                            ->orderBy('last_name')
+                            ->orderBy('first_name')
+                            ->get()
+                            ->mapWithKeys(fn ($person): array => [
+                                $person->id => $person->full_name
+                                    .($person->birth_date ? ' · '.$person->birth_date->format('d.m.Y') : ''),
+                            ])
+                            ->all())
+                        ->searchable()
+                        ->required(),
+                ])
+                ->fillForm(fn (TreeMembership $record): array => ['person_id' => $record->person_id])
+                ->action(function (TreeMembership $record, array $data): void {
+                    $record->update(['person_id' => $data['person_id']]);
+                    Notification::make()->title('Учётная запись привязана к человеку')->success()->send();
+                }),
+            Action::make('unlink_person')
+                ->label('Снять привязку')
+                ->icon(Heroicon::OutlinedLinkSlash)
+                ->color('warning')
+                ->visible(fn (TreeMembership $record): bool => (bool) $record->person_id && static::canEdit($record))
+                ->requiresConfirmation()
+                ->action(function (TreeMembership $record): void {
+                    $record->update(['person_id' => null]);
+                    Notification::make()->title('Привязка снята')->success()->send();
+                }),
             Action::make('send_credentials')
                 ->label('Прислать логин и пароль')
                 ->icon(Heroicon::OutlinedPaperAirplane)

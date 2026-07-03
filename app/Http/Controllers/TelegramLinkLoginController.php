@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\FamilyTree;
 use App\Models\TelegramLoginToken;
 use App\Services\AuthRedirector;
+use App\Support\SafeReturnUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -49,6 +50,14 @@ class TelegramLinkLoginController extends Controller
         $tree = $loginToken->telegramUser->current_tree_id
             ? FamilyTree::query()->find($loginToken->telegramUser->current_tree_id)
             : null;
+
+        if (
+            $request->attributes->get('customDomainTree')
+            && $tree
+            && (int) $request->attributes->get('customDomainTree')->id === (int) $tree->id
+        ) {
+            return redirect()->to(SafeReturnUrl::path($request->query('return')) ?: '/');
+        }
 
         return $loginToken->telegramUser->user
             ? app(AuthRedirector::class)->redirect($loginToken->telegramUser->user, $tree)

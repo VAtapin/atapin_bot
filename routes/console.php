@@ -23,3 +23,9 @@ Schedule::command('trees:purge-deleted')
 Schedule::command('events:send-reminders')
     ->everyFiveMinutes()
     ->withoutOverlapping();
+Schedule::command('domains:check')
+    ->dailyAt('04:15')
+    ->withoutOverlapping();
+Schedule::command('platform:heartbeat')
+    ->everyMinute()
+    ->withoutOverlapping();

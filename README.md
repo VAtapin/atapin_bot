@@ -56,7 +56,7 @@
 # Требования
 
 - PHP 8.3+
-- PHP extensions: `mbstring`, `intl`, `openssl`, `fileinfo`, `pdo_mysql`, `dom`, `xml`
+- PHP extensions: `mbstring`, `intl`, `openssl`, `fileinfo`, `pdo_mysql`, `dom`, `xml`, `gd`
 - Composer
 - Node.js 20+
 - MySQL / MariaDB
@@ -78,7 +78,7 @@ php artisan migrate --seed
 
 php artisan storage:link
 
-npm install
+npm ci
 
 npm run build
 
@@ -144,7 +144,7 @@ git pull
 Например:
 
 ```bash
-/opt/plesk/php/8.5/bin/php /usr/lib/plesk-9.0/composer.phar install --no-dev --optimize-autoloader
+/opt/plesk/php/8.4/bin/php /usr/lib/plesk-9.0/composer.phar install --no-dev --optimize-autoloader
 ```
 
 ---
@@ -193,7 +193,7 @@ VK_MINI_APP_URL=https://idommoy.com
 ## 5. Генерация APP_KEY
 
 ```bash
-/opt/plesk/php/8.5/bin/php artisan key:generate
+/opt/plesk/php/8.4/bin/php artisan key:generate
 ```
 
 ---
@@ -203,7 +203,7 @@ VK_MINI_APP_URL=https://idommoy.com
 Если база новая:
 
 ```bash
-/opt/plesk/php/8.5/bin/php artisan migrate:fresh --seed --force
+/opt/plesk/php/8.4/bin/php artisan migrate:fresh --seed --force
 ```
 
 ---
@@ -215,7 +215,7 @@ VK_MINI_APP_URL=https://idommoy.com
 Без него фотографии пользователей отображаться не будут.
 
 ```bash
-/opt/plesk/php/8.5/bin/php artisan storage:link
+/opt/plesk/php/8.4/bin/php artisan storage:link
 ```
 
 ---
@@ -223,7 +223,9 @@ VK_MINI_APP_URL=https://idommoy.com
 ## 8. Сборка фронтенда
 
 ```bash
-npm install
+export PATH=/opt/plesk/node/22/bin:$PATH
+
+npm ci
 
 npm run build
 ```
@@ -233,7 +235,7 @@ npm run build
 ## 9. Создание администратора
 
 ```bash
-/opt/plesk/php/8.5/bin/php artisan platform:make-super-admin admin@example.com
+/opt/plesk/php/8.4/bin/php artisan platform:make-super-admin admin@example.com
 ```
 
 Команда создаст безопасный пароль, назначит пользователя суперадминистратором
@@ -249,7 +251,7 @@ https://idommoy.com/admin
 ## 10. Регистрация Telegram Webhook
 
 ```bash
-/opt/plesk/php/8.5/bin/php artisan telegram:set-webhook
+/opt/plesk/php/8.4/bin/php artisan telegram:set-webhook
 ```
 
 ---
@@ -298,8 +300,16 @@ https://
 Добавить задачу:
 
 ```cron
-* * * * * cd /var/www/vhosts/ВАШ_ДОМЕН/httpdocs && /opt/plesk/php/8.5/bin/php artisan schedule:run > /dev/null 2>&1
+* * * * * cd /var/www/vhosts/ВАШ_ДОМЕН/httpdocs && /opt/plesk/php/8.4/bin/php artisan schedule:run > /dev/null 2>&1
 ```
+
+Для очереди в Plesk добавьте вторую ежеминутную задачу:
+
+```cron
+* * * * * flock -n /tmp/idommoy-queue.lock sh -c 'cd /var/www/vhosts/idommoy.com/httpdocs && /opt/plesk/php/8.4/bin/php artisan queue:work --stop-when-empty --tries=3 --timeout=120' > /dev/null 2>&1
+```
+
+Если выбран другой обработчик PHP, замените `8.4` на его фактическую версию.
 
 ---
 
@@ -310,7 +320,7 @@ Node.js используется **только** для сборки фронт
 После выполнения
 
 ```bash
-npm install
+npm ci
 
 npm run build
 ```
@@ -336,13 +346,16 @@ php artisan serve
 ```bash
 cd /var/www/vhosts/idommoy.com/httpdocs
 
-/opt/plesk/php/8.5/bin/php artisan down
+PHP=/opt/plesk/php/8.4/bin/php
+export PATH=/opt/plesk/node/22/bin:$PATH
+
+$PHP artisan down
 
 git pull --ff-only
 ```
 
 ```bash
-/opt/plesk/php/8.5/bin/php /usr/lib/plesk-9.0/composer.phar install --no-dev --optimize-autoloader
+$PHP /usr/lib/plesk-9.0/composer.phar install --no-dev --optimize-autoloader
 ```
 
 ```bash
@@ -352,23 +365,27 @@ npm run build
 ```
 
 ```bash
-/opt/plesk/php/8.5/bin/php artisan migrate --force
+$PHP artisan migrate --force
 
-/opt/plesk/php/8.5/bin/php artisan storage:link
+$PHP artisan storage:link
 
-/opt/plesk/php/8.5/bin/php artisan optimize:clear
+$PHP artisan optimize:clear
 
-/opt/plesk/php/8.5/bin/php artisan config:cache
+$PHP artisan config:cache
 
-/opt/plesk/php/8.5/bin/php artisan route:cache
+$PHP artisan route:cache
 
-/opt/plesk/php/8.5/bin/php artisan view:cache
+$PHP artisan view:cache
 
-/opt/plesk/php/8.5/bin/php artisan queue:restart
+$PHP artisan media:generate-thumbnails
 
-/opt/plesk/php/8.5/bin/php artisan telegram:set-webhook
+$PHP artisan platform:heartbeat
 
-/opt/plesk/php/8.5/bin/php artisan up
+$PHP artisan queue:restart
+
+$PHP artisan telegram:set-webhook
+
+$PHP artisan up
 ```
 
 После обновления:
@@ -377,6 +394,19 @@ npm run build
 - при необходимости включите платежи там же и заполните Stripe либо ЮKassa;
 - тарифам с отдельным Telegram-ботом включите «Собственный бот», затем в настройках дерева укажите токен и нажмите «Проверить и подключить бота»;
 - убедитесь, что cron `schedule:run` продолжает выполняться каждую минуту.
+- убедитесь, что в «Мониторинг» появились свежие отметки планировщика и обработчика очереди;
+- в «Проверки SMTP» различайте «SMTP-сервер принял письмо» и фактическое появление письма во входящих;
+- для собственного домена сохраните домен, добавьте показанную TXT-запись и CNAME, создайте domain alias в Plesk, выпустите Let's Encrypt и нажмите «Проверить DNS и SSL».
+
+Проверка 500 параллельных read-only запросов запускается только на подготовленном тестовом окружении:
+
+```bash
+LOAD_TEST_URL=https://idommoy.com \
+LOAD_TEST_TREE=test-family \
+LOAD_TEST_COOKIE='laravel_session=...' \
+LOAD_TEST_CONCURRENCY=500 \
+npm run test:load
+```
 
 ---
 

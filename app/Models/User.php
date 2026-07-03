@@ -17,13 +17,41 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 
-#[Fillable(['name', 'email', 'login', 'password', 'is_active', 'is_super_admin', 'two_factor_enabled', 'last_tree_id', 'merged_into_user_id', 'merged_at'])]
+#[Fillable(['name', 'email', 'login', 'password', 'is_active', 'is_super_admin', 'super_admin_assigned_by_user_id', 'super_admin_assigned_at', 'two_factor_enabled', 'last_tree_id', 'merged_into_user_id', 'merged_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, HasDefaultTenant, HasTenants
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    protected static function booted(): void
+    {
+        static::saving(function (User $user): void {
+            if ($user->is_super_admin) {
+                $user->two_factor_enabled = true;
+            }
+            if (
+                $user->exists
+                && $user->getOriginal('is_super_admin')
+                && $user->getOriginal('is_active')
+                && (
+                    ($user->isDirty('is_super_admin') && ! $user->is_super_admin)
+                    || ($user->isDirty('is_active') && ! $user->is_active)
+                )
+                && static::query()
+                    ->where('is_super_admin', true)
+                    ->where('is_active', true)
+                    ->whereKeyNot($user->id)
+                    ->doesntExist()
+            ) {
+                throw ValidationException::withMessages([
+                    'is_super_admin' => 'Нельзя отключить последнего активного суперадминистратора.',
+                ]);
+            }
+        });
+    }
 
     /**
      * Get the attributes that should be cast.
@@ -37,6 +65,7 @@ class User extends Authenticatable implements FilamentUser, HasDefaultTenant, Ha
             'password' => 'hashed',
             'is_active' => 'boolean',
             'is_super_admin' => 'boolean',
+            'super_admin_assigned_at' => 'datetime',
             'two_factor_enabled' => 'boolean',
             'merged_at' => 'datetime',
         ];

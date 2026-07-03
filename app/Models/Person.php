@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 
@@ -53,6 +54,7 @@ class Person extends Model
         'gedcom_data',
         'imported_at',
         'photo_path',
+        'photo_thumbnail_path',
         'is_published',
         'sort_order',
     ];
@@ -118,11 +120,36 @@ class Person extends Model
 
     public function getPhotoUrlAttribute(): ?string
     {
-        if ($this->photo_path) {
-            return URL::temporarySignedRoute('media.person', now()->addMinutes(30), ['person' => $this->id]);
+        if ($this->photo_path && Storage::disk('public')->exists($this->photo_path)) {
+            return URL::temporarySignedRoute(
+                'media.person',
+                now()->startOfHour()->addHours(6),
+                ['person' => $this->id],
+            );
         }
 
-        return $this->primaryPhoto?->url ?? $this->photos()->first()?->url;
+        $photo = $this->relationLoaded('photos')
+            ? ($this->photos->firstWhere('is_primary', true) ?: $this->photos->first())
+            : ($this->primaryPhoto()->first() ?: $this->photos()->first());
+
+        return $photo?->url;
+    }
+
+    public function getThumbnailUrlAttribute(): ?string
+    {
+        if ($this->photo_thumbnail_path && Storage::disk('public')->exists($this->photo_thumbnail_path)) {
+            return URL::temporarySignedRoute(
+                'media.person-thumbnail',
+                now()->startOfMinute()->addHours(6),
+                ['person' => $this->id],
+            );
+        }
+
+        $photo = $this->relationLoaded('photos')
+            ? ($this->photos->firstWhere('is_primary', true) ?: $this->photos->first())
+            : ($this->primaryPhoto()->first() ?: $this->photos()->first());
+
+        return $photo?->thumbnail_url ?? $this->photo_url;
     }
 
     public function parentLinks(): HasMany
@@ -183,6 +210,11 @@ class Person extends Model
     public function albums(): HasMany
     {
         return $this->hasMany(PhotoAlbum::class)->orderBy('sort_order');
+    }
+
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(TreeMembership::class);
     }
 
     public function primaryPhoto(): HasOne

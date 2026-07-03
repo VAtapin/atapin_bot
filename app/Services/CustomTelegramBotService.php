@@ -54,6 +54,20 @@ class CustomTelegramBotService
         return $bot;
     }
 
+    public function disconnect(FamilyTree $tree): void
+    {
+        $token = (string) $tree->custom_bot_token;
+        if ($token === '') {
+            return;
+        }
+
+        try {
+            $this->request($token, 'deleteWebhook', ['drop_pending_updates' => false]);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+    }
+
     private function request(string $token, string $method, array $data = []): array
     {
         $response = Http::asJson()

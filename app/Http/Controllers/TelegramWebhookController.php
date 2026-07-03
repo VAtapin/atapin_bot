@@ -173,8 +173,8 @@ class TelegramWebhookController extends Controller
                 ? 'approved'
                 : 'pending';
             $membership->update([
-                'person_id' => $user->person_id,
-                'role' => $isAdmin ? 'moderator' : ($user->person_id ? 'member' : 'guest'),
+                'person_id' => null,
+                'role' => $isAdmin ? 'moderator' : 'guest',
                 'status' => $accessStatus,
                 'approved_at' => $accessStatus === 'approved' ? now() : null,
             ]);
@@ -792,13 +792,14 @@ class TelegramWebhookController extends Controller
         string $relation,
         string $title,
     ): void {
-        if (! $user->person_id) {
-            $this->bot->sendMessage($chatId, 'Сначала администратор должен привязать вас к человеку в древе.');
+        $personId = $this->currentPersonId($user);
+        if (! $personId) {
+            $this->bot->sendMessage($chatId, 'Ваша учётная запись пока не привязана к человеку в выбранном дереве.');
 
             return;
         }
 
-        $url = $this->familyUrl($user->person_id).'?'.http_build_query([
+        $url = $this->familyUrl($personId).'?'.http_build_query([
             'tab' => 'list',
             'relation' => $relation,
         ]);
@@ -867,22 +868,23 @@ class TelegramWebhookController extends Controller
 
     private function queueMiniAppActionForCommand(TelegramUser $user, string $command): void
     {
+        $personId = $this->currentPersonId($user);
         $action = match ($command) {
-            '/tree' => ['tab' => 'tree', 'focus' => $user->person_id, 'scope' => 'branch'],
-            '/list' => ['tab' => 'list', 'focus' => $user->person_id, 'scope' => 'branch'],
+            '/tree' => ['tab' => 'tree', 'focus' => $personId, 'scope' => $personId ? 'branch' : 'all'],
+            '/list' => ['tab' => 'list', 'focus' => $personId, 'scope' => $personId ? 'branch' : 'all'],
             '/photos' => ['tab' => 'gallery'],
             '/birthdays' => ['tab' => 'birthdays'],
             '/events' => ['tab' => 'events'],
             '/me' => ['tab' => 'me'],
-            '/grandchildren' => $user->person_id ? [
+            '/grandchildren' => $personId ? [
                 'tab' => 'list',
-                'focus' => $user->person_id,
+                'focus' => $personId,
                 'relation' => 'grandchildren',
                 'scope' => 'branch',
             ] : null,
-            '/nephews' => $user->person_id ? [
+            '/nephews' => $personId ? [
                 'tab' => 'list',
-                'focus' => $user->person_id,
+                'focus' => $personId,
                 'relation' => 'nephews',
                 'scope' => 'branch',
             ] : null,
@@ -908,7 +910,7 @@ class TelegramWebhookController extends Controller
 
     private function sendMyFamily(int $chatId, TelegramUser $user): void
     {
-        $person = $user->person;
+        $person = $this->currentMembership($user)?->person;
 
         if (! $person) {
             $this->bot->sendMessage(
@@ -929,8 +931,9 @@ class TelegramWebhookController extends Controller
             ->implode(', ') ?: 'не указаны';
         $partners = Partnership::query()
             ->with(['partnerOne', 'partnerTwo'])
-            ->where('partner_one_id', $person->id)
-            ->orWhere('partner_two_id', $person->id)
+            ->where(fn ($query) => $query
+                ->where('partner_one_id', $person->id)
+                ->orWhere('partner_two_id', $person->id))
             ->get()
             ->map(fn (Partnership $partnership): string => $partnership->partner_one_id === $person->id
                 ? $partnership->partnerTwo->full_name
@@ -961,6 +964,24 @@ class TelegramWebhookController extends Controller
             .'⬇️ <b>Дети:</b> '.e($children),
             $this->treeKeyboard($chatId, $person->id),
         );
+    }
+
+    private function currentMembership(TelegramUser $user): ?TreeMembership
+    {
+        $treeId = $this->currentTree->id() ?: $user->current_tree_id;
+
+        return $treeId
+            ? $user->user?->memberships()
+                ->with('person')
+                ->where('tree_id', $treeId)
+                ->where('status', 'approved')
+                ->first()
+            : null;
+    }
+
+    private function currentPersonId(TelegramUser $user): ?int
+    {
+        return $this->currentMembership($user)?->person_id;
     }
 
     private function sendEvents(int $chatId): void

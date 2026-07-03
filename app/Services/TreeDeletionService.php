@@ -49,39 +49,69 @@ class TreeDeletionService
             ->where('status', 'deleting')
             ->where('deletion_scheduled_at', '<=', now())
             ->each(function (FamilyTree $tree) use (&$count): void {
-                $this->purgeFamilyData($tree);
-                $tree->updateQuietly(['status' => 'deleted']);
-                $tree->delete();
+                $actor = $tree->deletionRequestedBy ?: $tree->owner;
+                if ($actor) {
+                    $this->purgeNow($tree, $actor, $tree->deletion_reason);
+                } else {
+                    $this->purgeFamilyData($tree, null, $tree->deletion_reason);
+                }
                 $count++;
             });
 
         return $count;
     }
 
-    private function purgeFamilyData(FamilyTree $tree): void
+    public function purgeNow(FamilyTree $tree, User $actor, ?string $reason = null): void
     {
-        Storage::disk('public')->deleteDirectory("trees/{$tree->id}");
-        DB::transaction(function () use ($tree): void {
-            foreach ([
-                'family_events',
-                'person_photos',
-                'photo_albums',
-                'parent_children',
-                'partnerships',
-                'telegram_groups',
-                'data_issues',
-                'tree_invitations',
-                'tree_imports',
-                'settings',
-                'people',
-            ] as $table) {
-                DB::table($table)->where('tree_id', $tree->id)->delete();
-            }
-            DB::table('tree_memberships')
+        abort_unless($actor->is_super_admin || $tree->owner_user_id === $actor->id, 403);
+        $this->purgeFamilyData($tree, $actor, $reason);
+    }
+
+    private function purgeFamilyData(FamilyTree $tree, ?User $actor, ?string $reason = null): void
+    {
+        app(CustomTelegramBotService::class)->disconnect($tree);
+        $treeId = $tree->id;
+        $summary = [
+            'people' => DB::table('people')->where('tree_id', $tree->id)->count(),
+            'photos' => DB::table('person_photos')->where('tree_id', $tree->id)->count(),
+            'members' => DB::table('tree_memberships')->where('tree_id', $tree->id)->count(),
+            'payments' => DB::table('payments')->where('tree_id', $tree->id)->count(),
+            'payment_total' => DB::table('payments')->where('tree_id', $tree->id)->sum('amount'),
+            'accounting_records' => DB::table('payments')
                 ->where('tree_id', $tree->id)
-                ->where('role', '!=', 'owner')
-                ->delete();
+                ->get([
+                    'provider',
+                    'provider_reference',
+                    'status',
+                    'amount',
+                    'currency',
+                    'description',
+                    'paid_at',
+                    'refunded_at',
+                    'created_at',
+                ])
+                ->map(fn ($payment): array => (array) $payment)
+                ->all(),
+        ];
+
+        DB::transaction(function () use ($tree, $actor, $reason, $summary): void {
+            DB::table('deleted_tree_audits')->insert([
+                'original_tree_id' => $tree->id,
+                'deleted_by_user_id' => $actor?->id,
+                'name' => $tree->name,
+                'slug' => $tree->slug,
+                'reason' => $reason,
+                'summary' => json_encode($summary, JSON_UNESCAPED_UNICODE),
+                'deleted_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $tree->updateQuietly(['start_person_id' => null]);
+            $tree->forceDelete();
         });
+        Storage::disk('public')->deleteDirectory("trees/{$treeId}");
+        Storage::disk('local')->deleteDirectory("tree-backups/{$treeId}");
+        Storage::disk('local')->deleteDirectory("tree-imports/{$treeId}");
     }
 
     private function log(FamilyTree $tree, User $actor, string $action): void

@@ -17,6 +17,7 @@ use App\Http\Controllers\TelegramLoginController;
 use App\Http\Controllers\TreeChooserController;
 use App\Http\Controllers\TreeExportController;
 use App\Http\Controllers\TreeInvitationController;
+use App\Http\Controllers\TreePreviewController;
 use App\Http\Controllers\TwoFactorController;
 use App\Models\FamilyTree;
 use Illuminate\Http\Request;
@@ -55,6 +56,10 @@ Route::get('/billing/{tree:slug}/return', [BillingController::class, 'returned']
 Route::get('/tree-management/leave', LeaveTreeManagementController::class)
     ->middleware('auth')
     ->name('tree.management.leave');
+Route::get('/tree-management/{tree:slug}/preview/{mode}', TreePreviewController::class)
+    ->middleware('auth')
+    ->where('mode', 'normal|member|guest')
+    ->name('tree.preview');
 Route::get('/access/pending', function (Request $request) {
     $tree = $request->filled('tree')
         ? FamilyTree::query()->where('slug', $request->string('tree'))->first()
@@ -67,11 +72,17 @@ Route::get('/invitations/{invitation}/qr', InvitationQrController::class)
     ->middleware('auth')
     ->name('tree.invitation.qr');
 Route::get('/media/photos/{photo}', [MediaController::class, 'photo'])
-    ->middleware(['signed', 'throttle:120,1'])
+    ->middleware(['signed', 'family.media'])
     ->name('media.photo');
+Route::get('/media/photos/{photo}/thumbnail', [MediaController::class, 'photoThumbnail'])
+    ->middleware(['signed', 'family.media'])
+    ->name('media.photo-thumbnail');
 Route::get('/media/people/{person}', [MediaController::class, 'person'])
-    ->middleware(['signed', 'throttle:120,1'])
+    ->middleware(['signed', 'family.media'])
     ->name('media.person');
+Route::get('/media/people/{person}/thumbnail', [MediaController::class, 'personThumbnail'])
+    ->middleware(['signed', 'family.media'])
+    ->name('media.person-thumbnail');
 Route::get('/admin/trees/{tree}/export', TreeExportController::class)
     ->middleware('auth')
     ->name('trees.export');
