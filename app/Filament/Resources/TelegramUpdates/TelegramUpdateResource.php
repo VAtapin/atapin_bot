@@ -47,6 +47,8 @@ class TelegramUpdateResource extends Resource
     {
         return $schema
             ->components([
+                TextInput::make('bot_scope')
+                    ->label('Бот'),
                 TextInput::make('telegram_update_id')
                     ->tel()
                     ->required()
@@ -70,6 +72,13 @@ class TelegramUpdateResource extends Resource
     {
         return $table
             ->columns([
+                TextColumn::make('bot_scope')
+                    ->label('Бот')
+                    ->badge()
+                    ->searchable(),
+                TextColumn::make('tree.name')
+                    ->label('Дерево')
+                    ->placeholder('Бот платформы'),
                 TextColumn::make('telegram_update_id')
                     ->label('Update ID')
                     ->numeric()

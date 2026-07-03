@@ -133,6 +133,44 @@ class TelegramWebhookTest extends TestCase
         );
     }
 
+    public function test_same_update_id_is_processed_separately_for_each_family_bot(): void
+    {
+        $firstTree = FamilyTree::query()->firstOrFail();
+        $firstTree->update(['custom_bot_webhook_secret' => 'first-secret']);
+        $secondTree = FamilyTree::query()->create([
+            'name' => 'Второе дерево',
+            'slug' => 'second-family-bot',
+            'status' => 'active',
+            'plan_id' => Plan::query()->first()->id,
+            'custom_bot_webhook_secret' => 'second-secret',
+        ]);
+        $payload = [
+            'update_id' => 777,
+            'message' => [
+                'message_id' => 777,
+                'text' => '/help',
+                'from' => ['id' => 901, 'first_name' => 'Иван'],
+                'chat' => ['id' => 901, 'type' => 'private'],
+            ],
+        ];
+
+        $this->withHeader('X-Telegram-Bot-Api-Secret-Token', 'first-secret')
+            ->postJson('/api/telegram/webhook/'.$firstTree->slug, $payload)
+            ->assertOk();
+        $this->withHeader('X-Telegram-Bot-Api-Secret-Token', 'second-secret')
+            ->postJson('/api/telegram/webhook/'.$secondTree->slug, $payload)
+            ->assertOk();
+
+        $this->assertDatabaseHas('telegram_updates', [
+            'bot_scope' => 'tree:'.$firstTree->id,
+            'telegram_update_id' => 777,
+        ]);
+        $this->assertDatabaseHas('telegram_updates', [
+            'bot_scope' => 'tree:'.$secondTree->id,
+            'telegram_update_id' => 777,
+        ]);
+    }
+
     public function test_approved_linked_user_can_receive_new_site_credentials(): void
     {
         $person = Person::factory()->create();

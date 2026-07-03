@@ -116,8 +116,50 @@ class EditTreeProfile extends EditTenantProfile
                         ->dehydrated(fn (?string $state): bool => filled($state)),
                     TextInput::make('custom_bot_username')
                         ->label('Username бота')
+                        ->helperText('Заполняется автоматически после проверки токена.')
                         ->disabled()
                         ->dehydrated(false),
+                    TextInput::make('_bot_status')
+                        ->label('Состояние подключения')
+                        ->afterStateHydrated(fn (TextInput $component) => $component->state(match ($this->tenant->custom_bot_status) {
+                            'active' => 'Подключён, webhook работает',
+                            'warning' => 'Подключён, требуется проверка',
+                            'error' => 'Ошибка подключения',
+                            'disconnected' => 'Webhook отключён',
+                            default => 'Ещё не подключён',
+                        }))
+                        ->disabled()
+                        ->dehydrated(false),
+                    TextInput::make('_bot_webhook_url')
+                        ->label('Webhook нового сайта')
+                        ->afterStateHydrated(fn (TextInput $component) => $component->state(
+                            route('telegram.custom-webhook', ['tree' => $this->tenant->slug]),
+                        ))
+                        ->helperText('Этот адрес устанавливается автоматически. Старый webhook Telegram заменяет новым.')
+                        ->disabled()
+                        ->dehydrated(false)
+                        ->columnSpanFull(),
+                    Textarea::make('_bot_commands')
+                        ->label('Команды, которые увидят пользователи')
+                        ->afterStateHydrated(fn (Textarea $component) => $component->state(
+                            collect(app(CustomTelegramBotService::class)->commands())
+                                ->map(fn (array $command): string => '/'.$command['command'].' — '.$command['description'])
+                                ->implode("\n"),
+                        ))
+                        ->helperText('После подключения нижняя кнопка Telegram снова станет меню команд. Кнопку Open необходимо один раз изменить в BotFather.')
+                        ->disabled()
+                        ->dehydrated(false)
+                        ->rows(8)
+                        ->columnSpanFull(),
+                    Textarea::make('_bot_last_error')
+                        ->label('Последняя ошибка Telegram')
+                        ->afterStateHydrated(fn (Textarea $component) => $component->state(
+                            $this->tenant->custom_bot_last_error ?: 'Ошибок не зарегистрировано.',
+                        ))
+                        ->disabled()
+                        ->dehydrated(false)
+                        ->rows(3)
+                        ->columnSpanFull(),
                 ])->columns(2),
             Section::make('Приватность')
                 ->id('privacy')
@@ -141,9 +183,15 @@ class EditTreeProfile extends EditTenantProfile
     protected function afterSave(): void
     {
         app(TreeStorageService::class)->recalculate($this->tenant->fresh('plan'));
-        if ($this->tenant->wasChanged('primary_domain')) {
-            app(CustomDomainService::class)->prepare($this->tenant);
+        $domainService = app(CustomDomainService::class);
+        if (
+            $this->tenant->wasChanged('primary_domain')
+            || ($this->tenant->primary_domain && ! $this->tenant->domain_verification_token)
+        ) {
+            $domainService->prepare($this->tenant);
         }
+        $this->tenant->refresh();
+        $this->data['_domain_instructions'] = $domainService->instructions($this->tenant);
     }
 
     protected function mutateFormDataBeforeSave(array $data): array
@@ -159,16 +207,14 @@ class EditTreeProfile extends EditTenantProfile
     {
         return [
             Action::make('configure_bot')
-                ->label('Проверить и подключить бота')
+                ->label(fn (): string => $this->tenant->custom_bot_verified_at
+                    ? 'Обновить команды и подключение'
+                    : 'Проверить и подключить бота')
                 ->icon('heroicon-o-paper-airplane')
                 ->visible(fn (): bool => (bool) $this->tenant->plan?->custom_bot)
                 ->action(function (): void {
                     try {
                         $bot = app(CustomTelegramBotService::class)->configure($this->tenant->fresh('plan'));
-                        Notification::make()
-                            ->title('Бот @'.($bot['username'] ?? 'подключён'))
-                            ->success()
-                            ->send();
                     } catch (Throwable $exception) {
                         report($exception);
                         Notification::make()
@@ -179,7 +225,22 @@ class EditTreeProfile extends EditTenantProfile
                             ->danger()
                             ->persistent()
                             ->send();
+
+                        return;
                     }
+
+                    try {
+                        $this->tenant->refresh();
+                        $this->fillForm();
+                    } catch (Throwable $exception) {
+                        report($exception);
+                    }
+
+                    Notification::make()
+                        ->title('Бот @'.($bot['username'] ?? 'подключён'))
+                        ->body('Webhook обновлён. Нижняя кнопка Telegram теперь открывает меню команд.')
+                        ->success()
+                        ->send();
                 }),
             Action::make('verify_domain')
                 ->label('Проверить DNS и SSL')
@@ -191,16 +252,6 @@ class EditTreeProfile extends EditTenantProfile
                 ->action(function (): void {
                     try {
                         $result = app(CustomDomainService::class)->verify($this->tenant->fresh());
-                        $notification = Notification::make()
-                            ->title($result['verified'] ? 'Домен подтверждён' : 'Домен пока не подтверждён')
-                            ->body($result['error'] ?: 'DNS и HTTPS готовы. Домен активирован.')
-                            ->persistent();
-
-                        $result['verified']
-                            ? $notification->success()
-                            : $notification->warning();
-                        $notification->send();
-                        $this->fillForm();
                     } catch (Throwable $exception) {
                         report($exception);
                         Notification::make()
@@ -209,7 +260,26 @@ class EditTreeProfile extends EditTenantProfile
                             ->danger()
                             ->persistent()
                             ->send();
+
+                        return;
                     }
+
+                    try {
+                        $this->tenant->refresh();
+                        $this->fillForm();
+                    } catch (Throwable $exception) {
+                        report($exception);
+                    }
+
+                    $notification = Notification::make()
+                        ->title($result['verified'] ? 'Домен подтверждён' : 'Домен пока не подтверждён')
+                        ->body($result['error'] ?: 'DNS и HTTPS готовы. Домен активирован.')
+                        ->persistent();
+
+                    $result['verified']
+                        ? $notification->success()
+                        : $notification->warning();
+                    $notification->send();
                 }),
             Action::make('delete_tree')
                 ->label('Удалить дерево')

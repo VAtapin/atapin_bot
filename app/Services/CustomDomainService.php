@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Models\FamilyTree;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class CustomDomainService
 {
@@ -101,9 +103,7 @@ class CustomDomainService
             $tree->primary_domain,
         ];
         foreach ($txtNames as $name) {
-            foreach (@dns_get_record($name, DNS_TXT) ?: [] as $record) {
-                $records[] = (string) ($record['txt'] ?? '');
-            }
+            $records = [...$records, ...$this->txtRecords($name)];
         }
         $expected = 'idommoy-verification='.$tree->domain_verification_token;
         $verified = collect($records)->contains(
@@ -169,27 +169,95 @@ class CustomDomainService
 
     private function checkSsl(string $domain): string
     {
-        $context = stream_context_create([
-            'ssl' => [
-                'verify_peer' => true,
-                'verify_peer_name' => true,
-                'peer_name' => $domain,
-                'SNI_enabled' => true,
-            ],
-        ]);
-        $socket = @stream_socket_client(
-            "ssl://{$domain}:443",
-            $errno,
-            $error,
-            8,
-            STREAM_CLIENT_CONNECT,
-            $context,
-        );
-        if (! is_resource($socket)) {
+        if (function_exists('stream_socket_client')) {
+            try {
+                $context = stream_context_create([
+                    'ssl' => [
+                        'verify_peer' => true,
+                        'verify_peer_name' => true,
+                        'peer_name' => $domain,
+                        'SNI_enabled' => true,
+                    ],
+                ]);
+                $socket = @stream_socket_client(
+                    "ssl://{$domain}:443",
+                    $errno,
+                    $error,
+                    8,
+                    STREAM_CLIENT_CONNECT,
+                    $context,
+                );
+                if (is_resource($socket)) {
+                    fclose($socket);
+
+                    return 'ready';
+                }
+            } catch (Throwable) {
+                // Some hosters disable socket functions. HTTP below provides
+                // the same certificate validation without relying on sockets.
+            }
+        }
+
+        try {
+            Http::timeout(8)
+                ->connectTimeout(5)
+                ->withoutRedirecting()
+                ->get("https://{$domain}");
+
+            return 'ready';
+        } catch (Throwable) {
             return 'missing';
         }
-        fclose($socket);
+    }
 
-        return 'ready';
+    /**
+     * @return array<int, string>
+     */
+    private function txtRecords(string $name): array
+    {
+        if (function_exists('dns_get_record')) {
+            try {
+                $records = collect(@dns_get_record($name, DNS_TXT) ?: [])
+                    ->pluck('txt')
+                    ->filter(fn ($value): bool => is_string($value) && $value !== '')
+                    ->values()
+                    ->all();
+                if ($records !== []) {
+                    return $records;
+                }
+            } catch (Throwable) {
+                // Continue with a public DNS-over-HTTPS resolver.
+            }
+        }
+
+        try {
+            $response = Http::acceptJson()
+                ->timeout(8)
+                ->connectTimeout(5)
+                ->get('https://dns.google/resolve', [
+                    'name' => $name,
+                    'type' => 'TXT',
+                ]);
+            if (! $response->successful()) {
+                return [];
+            }
+
+            return collect($response->json('Answer', []))
+                ->where('type', 16)
+                ->pluck('data')
+                ->filter(fn ($value): bool => is_string($value))
+                ->map(function (string $value): string {
+                    preg_match_all('/"((?:\\\\.|[^"])*)"/', $value, $parts);
+
+                    return $parts[1] === []
+                        ? trim($value, '"')
+                        : implode('', array_map('stripcslashes', $parts[1]));
+                })
+                ->filter()
+                ->values()
+                ->all();
+        } catch (Throwable) {
+            return [];
+        }
     }
 }

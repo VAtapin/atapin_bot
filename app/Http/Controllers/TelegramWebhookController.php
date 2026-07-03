@@ -38,7 +38,11 @@ class TelegramWebhookController extends Controller
     public function __invoke(Request $request): JsonResponse
     {
         $routeTree = $request->route('tree');
-        $routeTree = $routeTree instanceof FamilyTree ? $routeTree : null;
+        $routeTree = $routeTree instanceof FamilyTree
+            ? $routeTree
+            : (is_string($routeTree)
+                ? FamilyTree::query()->where('slug', $routeTree)->first()
+                : null);
         if ($routeTree) {
             $this->currentTree->set($routeTree);
         }
@@ -58,7 +62,9 @@ class TelegramWebhookController extends Controller
         $chat = $message['chat'] ?? null;
         $from = $message['from'] ?? null;
 
+        $botScope = $routeTree ? 'tree:'.$routeTree->id : 'platform';
         $update = TelegramUpdate::query()->firstOrNew([
+            'bot_scope' => $botScope,
             'telegram_update_id' => $payload['update_id'],
         ]);
 
@@ -67,6 +73,7 @@ class TelegramWebhookController extends Controller
         }
 
         $update->fill([
+            'tree_id' => $routeTree?->id,
             'chat_id' => $chat['id'] ?? null,
             'telegram_user_id' => $from['id'] ?? null,
             'update_type' => array_key_first(array_diff_key($payload, ['update_id' => true])),
@@ -1102,7 +1109,12 @@ class TelegramWebhookController extends Controller
         if ($chatId > 0) {
             $button['web_app'] = ['url' => $url];
         } else {
-            $username = ltrim((string) config('services.telegram.bot_username'), '@');
+            $tree = $this->currentTree->get();
+            $username = ltrim((string) (
+                $tree?->custom_bot_verified_at && $tree?->custom_bot_username
+                    ? $tree->custom_bot_username
+                    : config('services.telegram.bot_username')
+            ), '@');
             $startParameter = 'tree_'.($this->currentTree->id() ?: 0).'_'.$this->miniAppStartParameter($url);
             $button['url'] = "https://t.me/{$username}?startapp=".rawurlencode($startParameter);
         }
