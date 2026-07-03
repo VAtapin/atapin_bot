@@ -19,6 +19,7 @@ use App\Http\Controllers\TreeExportController;
 use App\Http\Controllers\TreeInvitationController;
 use App\Http\Controllers\TreePreviewController;
 use App\Http\Controllers\TwoFactorController;
+use App\Http\Controllers\TotpController;
 use App\Models\FamilyTree;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -47,6 +48,16 @@ Route::get('/account', [AccountController::class, 'show'])->middleware('auth')->
 Route::delete('/account/identities/{identity}', [AccountController::class, 'unlink'])
     ->middleware('auth')
     ->name('account.identities.unlink');
+Route::middleware('auth')->group(function (): void {
+    Route::get('/account/two-factor/setup', [TotpController::class, 'setup'])
+        ->name('totp.setup');
+    Route::post('/account/two-factor/confirm', [TotpController::class, 'confirm'])
+        ->middleware('throttle:10,1')
+        ->name('totp.confirm');
+    Route::delete('/account/two-factor', [TotpController::class, 'destroy'])
+        ->middleware('throttle:10,1')
+        ->name('totp.destroy');
+});
 Route::get('/billing/{tree:slug}/{plan}/checkout', [BillingController::class, 'checkout'])
     ->middleware('auth')
     ->name('billing.checkout');

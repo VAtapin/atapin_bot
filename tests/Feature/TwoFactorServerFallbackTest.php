@@ -46,6 +46,19 @@ class TwoFactorServerFallbackTest extends TestCase
         );
     }
 
+    public function test_totp_login_writes_server_fallback_without_sending_remote_message(): void
+    {
+        Storage::fake('local');
+        config()->set('mail.default', 'array');
+        $user = User::factory()->create(['is_super_admin' => true]);
+
+        $delivered = app(TwoFactorCodeDelivery::class)
+            ->deliver($user, '112233', now()->addMinutes(10), sendRemotely: false);
+
+        $this->assertTrue($delivered);
+        Storage::disk('local')->assertExists("2fa/superadmin-{$user->id}.txt");
+    }
+
     public function test_server_fallback_is_never_created_for_a_regular_user(): void
     {
         Storage::fake('local');

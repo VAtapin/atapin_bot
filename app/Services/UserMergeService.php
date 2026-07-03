@@ -77,6 +77,12 @@ class UserMergeService
                     ? $target->super_admin_assigned_at
                     : ($source->super_admin_assigned_at ?: ($source->is_super_admin ? now() : null)),
                 'two_factor_enabled' => $target->two_factor_enabled || $source->two_factor_enabled,
+                'two_factor_secret' => $target->two_factor_secret ?: $source->two_factor_secret,
+                'two_factor_confirmed_at' => $target->two_factor_confirmed_at
+                    ?: $source->two_factor_confirmed_at,
+                'two_factor_last_used_counter' => $target->two_factor_secret
+                    ? $target->two_factor_last_used_counter
+                    : $source->two_factor_last_used_counter,
             ]);
             $source->update([
                 'is_active' => false,
@@ -85,6 +91,9 @@ class UserMergeService
                 'merged_at' => now(),
                 'login' => null,
                 'last_tree_id' => null,
+                'two_factor_secret' => null,
+                'two_factor_confirmed_at' => null,
+                'two_factor_last_used_counter' => null,
             ]);
 
             ChangeLog::query()->create([

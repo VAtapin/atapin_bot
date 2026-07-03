@@ -19,8 +19,8 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
-#[Fillable(['name', 'email', 'login', 'password', 'is_active', 'is_super_admin', 'super_admin_assigned_by_user_id', 'super_admin_assigned_at', 'two_factor_enabled', 'last_tree_id', 'merged_into_user_id', 'merged_at'])]
-#[Hidden(['password', 'remember_token'])]
+#[Fillable(['name', 'email', 'login', 'password', 'is_active', 'is_super_admin', 'super_admin_assigned_by_user_id', 'super_admin_assigned_at', 'two_factor_enabled', 'two_factor_secret', 'two_factor_confirmed_at', 'two_factor_last_used_counter', 'last_tree_id', 'merged_into_user_id', 'merged_at'])]
+#[Hidden(['password', 'remember_token', 'two_factor_secret'])]
 class User extends Authenticatable implements FilamentUser, HasDefaultTenant, HasTenants
 {
     /** @use HasFactory<UserFactory> */
@@ -67,6 +67,9 @@ class User extends Authenticatable implements FilamentUser, HasDefaultTenant, Ha
             'is_super_admin' => 'boolean',
             'super_admin_assigned_at' => 'datetime',
             'two_factor_enabled' => 'boolean',
+            'two_factor_secret' => 'encrypted',
+            'two_factor_confirmed_at' => 'datetime',
+            'two_factor_last_used_counter' => 'integer',
             'merged_at' => 'datetime',
         ];
     }

@@ -15,10 +15,19 @@ class TwoFactorCodeDelivery
 
     private const LIFETIME_MINUTES = 10;
 
-    public function deliver(User $user, string $code, Carbon $expiresAt): bool
+    public function deliver(
+        User $user,
+        string $code,
+        Carbon $expiresAt,
+        bool $sendRemotely = true,
+    ): bool
     {
         $serverFallbackWritten = $user->is_super_admin
             && $this->writeServerFallback($user, $code, $expiresAt);
+
+        if (! $sendRemotely) {
+            return $serverFallbackWritten;
+        }
 
         if ($this->sendByEmail($user, $code)) {
             return true;

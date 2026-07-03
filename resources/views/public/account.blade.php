@@ -19,6 +19,24 @@
         @endforeach
     </div>
     <p><a class="button" href="{{ route('telegram.login', ['link' => 1, 'return' => route('account')]) }}">Подключить Telegram</a></p>
+    <article style="margin-top:22px;padding:18px;border:1px solid var(--line);border-radius:12px">
+        <strong>Приложение-аутентификатор</strong>
+        @if($user->two_factor_confirmed_at)
+            <p style="color:#2f6c3d">Подключено {{ $user->two_factor_confirmed_at->format('d.m.Y H:i') }}. Поддерживаются Яндекс ID, 2FAS, Aegis, Microsoft Authenticator и другие приложения TOTP.</p>
+            <p><a class="button secondary" href="{{ route('totp.setup') }}">Подключить заново</a></p>
+            @unless($user->is_super_admin)
+                <form method="post" action="{{ route('totp.destroy') }}" style="display:grid;gap:8px;max-width:360px">
+                    @csrf
+                    @method('delete')
+                    <label><span>Код для отключения</span><input name="code" inputmode="numeric" maxlength="6" required></label>
+                    <button class="button secondary" type="submit">Отключить приложение</button>
+                </form>
+            @endunless
+        @else
+            <p>Получайте одноразовые коды без email, Telegram и подключения телефона к интернету.</p>
+            <a class="button" href="{{ route('totp.setup') }}">Подключить приложение</a>
+        @endif
+    </article>
     <p style="color:var(--muted)">VK, OK и MAX будут подключаться здесь же после выдачи приложению соответствующих ключей.</p>
 </section>
 @endsection

@@ -70,6 +70,9 @@ class AccountPrivacyController extends Controller
                 'password' => bin2hex(random_bytes(32)),
                 'is_active' => false,
                 'two_factor_enabled' => false,
+                'two_factor_secret' => null,
+                'two_factor_confirmed_at' => null,
+                'two_factor_last_used_counter' => null,
                 'last_tree_id' => null,
                 'remember_token' => null,
             ]);

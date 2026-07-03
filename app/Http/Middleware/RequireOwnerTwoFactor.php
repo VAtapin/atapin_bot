@@ -41,8 +41,19 @@ class RequireOwnerTwoFactor
                 'two_factor_expires_at' => $expiresAt->timestamp,
             ]);
 
-            $sent = $this->delivery->deliver($user, $code, $expiresAt);
-            abort_unless($sent, 503, 'Не удалось отправить код. Настройте SMTP или подключите Telegram.');
+            $totpConfigured = filled($user->two_factor_secret)
+                && $user->two_factor_confirmed_at !== null;
+            $sent = $this->delivery->deliver(
+                $user,
+                $code,
+                $expiresAt,
+                sendRemotely: ! $totpConfigured,
+            );
+            abort_unless(
+                $totpConfigured || $sent,
+                503,
+                'Не удалось отправить код. Настройте SMTP или подключите Telegram.',
+            );
         }
 
         $request->session()->put('two_factor_intended_url', $request->fullUrl());
