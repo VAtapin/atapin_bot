@@ -13,6 +13,7 @@ use App\Models\TelegramUpdate;
 use App\Models\TelegramUser;
 use App\Models\TreeMembership;
 use App\Services\ExternalIdentityService;
+use App\Services\TelegramAccountLinkService;
 use App\Services\TelegramBot;
 use App\Services\TelegramWebLogin;
 use App\Services\TreeAccessService;
@@ -21,6 +22,7 @@ use App\Support\CurrentTree;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class TelegramWebhookController extends Controller
@@ -28,6 +30,7 @@ class TelegramWebhookController extends Controller
     public function __construct(
         private readonly TelegramBot $bot,
         private readonly ExternalIdentityService $identities,
+        private readonly TelegramAccountLinkService $accountLinks,
         private readonly TreeAccessService $treeAccess,
         private readonly CurrentTree $currentTree,
     ) {}
@@ -143,6 +146,51 @@ class TelegramWebhookController extends Controller
         [$rawCommand, $arguments] = array_pad(preg_split('/\s+/u', $text, 2), 2, '');
         $command = mb_strtolower($rawCommand);
         $command = preg_replace('/@[^ ]+$/', '', $command);
+
+        if ($command === '/start' && preg_match('/^link_([a-z0-9]{32})$/', $arguments, $linkMatch)) {
+            if ((int) $chat['id'] !== (int) $from['id']) {
+                $this->sendPrivateBotButton(
+                    $chat['id'],
+                    'Для безопасной привязки откройте личный чат с ботом:',
+                    '🔐 Подключить Telegram',
+                    $arguments,
+                );
+
+                return;
+            }
+
+            try {
+                $linkedUser = $this->accountLinks->consume($linkMatch[1], $user, [
+                    'username' => $user->username,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'language_code' => $user->language_code,
+                ]);
+            } catch (ValidationException $exception) {
+                $this->bot->sendMessage(
+                    $chat['id'],
+                    '❌ '.$exception->errors()['token'][0],
+                );
+
+                return;
+            }
+
+            $siteUrl = app(TelegramWebLogin::class)->createUrl($user->fresh());
+            $this->bot->sendMessage(
+                $chat['id'],
+                '✅ Telegram подключён к учётной записи <b>'.e($linkedUser->name).'</b>.',
+                [
+                    'protect_content' => true,
+                    'reply_markup' => [
+                        'inline_keyboard' => [[
+                            ['text' => '🌿 Открыть семейный сайт', 'url' => $siteUrl],
+                        ]],
+                    ],
+                ],
+            );
+
+            return;
+        }
 
         if (! $tree) {
             if ($command === '/trees') {

@@ -27,7 +27,10 @@ class TelegramLinkLoginController extends Controller
             abort_if(
                 $loginToken->used_at
                 || $loginToken->expires_at->isPast()
-                || ! $loginToken->telegramUser->isApproved(),
+                || (
+                    ! $loginToken->telegramUser->isApproved()
+                    && ! $loginToken->telegramUser->user?->is_super_admin
+                ),
                 403,
                 'Ссылка входа недействительна или уже использована.',
             );

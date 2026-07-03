@@ -28,7 +28,12 @@
             </article>
         @endforeach
     </div>
-    <p><a class="button" href="{{ route('telegram.login', ['link' => 1, 'return' => route('account')]) }}">Подключить Telegram</a></p>
+    @unless($user->externalIdentities->contains('provider', 'telegram'))
+        <form method="post" action="{{ route('account.telegram.connect') }}" style="margin-top:16px">
+            @csrf
+            <button class="button" type="submit">Подключить Telegram через бота</button>
+        </form>
+    @endunless
     <article style="margin-top:22px;padding:18px;border:1px solid var(--line);border-radius:12px">
         <strong>Приложение-аутентификатор</strong>
         @if($user->two_factor_confirmed_at)

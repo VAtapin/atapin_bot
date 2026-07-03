@@ -12,6 +12,7 @@ use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\PublicAuthController;
 use App\Http\Controllers\PublicSiteController;
 use App\Http\Controllers\RegistrationController;
+use App\Http\Controllers\TelegramAccountLinkController;
 use App\Http\Controllers\TelegramLinkLoginController;
 use App\Http\Controllers\TelegramLoginController;
 use App\Http\Controllers\TotpController;
@@ -48,6 +49,9 @@ Route::get('/account', [AccountController::class, 'show'])->middleware('auth')->
 Route::delete('/account/identities/{identity}', [AccountController::class, 'unlink'])
     ->middleware('auth')
     ->name('account.identities.unlink');
+Route::post('/account/telegram/connect', TelegramAccountLinkController::class)
+    ->middleware(['auth', 'throttle:5,1'])
+    ->name('account.telegram.connect');
 Route::middleware('auth')->group(function (): void {
     Route::get('/account/two-factor/setup', [TotpController::class, 'setup'])
         ->name('totp.setup');

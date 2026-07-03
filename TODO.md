@@ -32,7 +32,7 @@
 Это не недоделки кода: для них нужны production-доступы и внешние сервисы.
 
 - Отправить реальное тестовое письмо через Gmail и проверить Inbox/Spam по указанному `Message-ID`.
-- Проверить Telegram Login и webhook на `https://idommoy.com`.
+- Проверить привязку Telegram через одноразовую ссылку и webhook на `https://idommoy.com`.
 - Выполнить `php artisan media:generate-thumbnails` для уже загруженных фотографий.
 - Убедиться в панели «Мониторинг», что scheduler и queue worker дают свежий heartbeat.
 - Подключить один тестовый собственный домен: TXT, CNAME, alias в Plesk и Let's Encrypt.

@@ -178,10 +178,10 @@ TELEGRAM_WEBHOOK_SECRET=********
 TELEGRAM_MINI_APP_URL=https://idommoy.com/family
 TELEGRAM_ADMIN_IDS=123456789
 
-# BotFather → Bot Settings → Web Login
-TELEGRAM_OIDC_CLIENT_ID=123456789
-TELEGRAM_OIDC_CLIENT_SECRET=********
-TELEGRAM_OIDC_REDIRECT_URI=https://idommoy.com/auth/telegram/callback
+# Необязательно, только если Web Login доступен для бота:
+TELEGRAM_OIDC_CLIENT_ID=
+TELEGRAM_OIDC_CLIENT_SECRET=
+TELEGRAM_OIDC_REDIRECT_URI=
 
 VK_APP_ID=
 VK_APP_SECRET=
@@ -284,14 +284,11 @@ https://
 /family
 ```
 
-В **Bot Settings → Web Login** добавьте:
-
-- Allowed URL: `https://example.com`
-- Redirect URI: `https://example.com/auth/telegram/callback`
-
-Полученные Client ID и Client Secret внесите в `.env`. После первого входа
-пользователь появится в разделе «Доступ пользователей». Привяжите его к
-карточке человека и установите статус «Разрешён».
+Telegram привязывается в разделе «Безопасность и способы входа». Сайт создаёт
+одноразовую ссылку, пользователь открывает личный чат с ботом, а бот связывает
+Telegram ID с уже открытой учётной записью. OIDC Client ID и Client Secret для
+этого не нужны. Если BotFather позднее предоставит раздел **Web Login**, OIDC
+можно включить дополнительно для входа без пароля.
 
 ---
 
@@ -399,6 +396,7 @@ $PHP artisan up
 - если у суперадминистратора недоступны и почта, и Telegram, одноразовый код входа на 10 минут создаётся в `storage/app/private/2fa/superadmin-{ID}.txt`; файл доступен только через Plesk/SSH и удаляется после входа либо планировщиком после истечения срока;
 - приложение-аутентификатор подключается в «Способы входа» по стандарту TOTP: один QR-код совместим с Яндекс ID, 2FAS, Aegis, Microsoft Authenticator и другими TOTP-приложениями;
 - после регистрации TOTP предлагается как необязательный завершающий шаг; для суперадминистратора он обязателен, а для любого другого пользователя требование можно отдельно включить в его административной карточке;
+- привязка Telegram к уже открытой учётной записи выполняется через одноразовую ссылку `t.me/...?...start=link_*` и не требует недоступных некоторым ботам OIDC Client ID/Secret;
 - для собственного домена сохраните домен, добавьте показанную TXT-запись и CNAME, создайте domain alias в Plesk, выпустите Let's Encrypt и нажмите «Проверить DNS и SSL».
 
 Проверка 500 параллельных read-only запросов запускается только на подготовленном тестовом окружении:
