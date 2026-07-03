@@ -26,27 +26,45 @@
                 </div>
             </div>
             @if ($hasBrowserSession)
-                @if(!empty($familyAppConfig['managementUrl']))
-                    <a class="logout-button" href="{{ $familyAppConfig['managementUrl'] }}">Управление</a>
-                @endif
-                <form method="post" action="{{ route('family.logout') }}">
-                    @csrf
-                    <button class="logout-button" type="submit">Выйти</button>
-                </form>
+                <div class="topbar-actions">
+                    @if(!empty($familyAppConfig['managementUrl']))
+                        <a class="logout-button" href="{{ $familyAppConfig['managementUrl'] }}" title="Управление">
+                            <span class="action-icon" aria-hidden="true">⚙</span><span class="action-label">Управление</span>
+                        </a>
+                    @endif
+                    <form method="post" action="{{ route('family.logout') }}">
+                        @csrf
+                        <button class="logout-button" type="submit" title="Выйти">
+                            <span class="action-icon" aria-hidden="true">↪</span><span class="action-label">Выйти</span>
+                        </button>
+                    </form>
+                </div>
             @endif
         </header>
 
         <nav class="tabs" aria-label="Разделы">
-            <button class="tab is-active" type="button" data-tab="tree">Древо</button>
-            <button class="tab" type="button" data-tab="list">Список</button>
-            <button class="tab" type="button" data-tab="gallery">Фото</button>
-            <button class="tab" type="button" data-tab="birthdays">Дни рождения</button>
-            <button class="tab" type="button" data-tab="events">События</button>
-            <button class="tab" type="button" data-tab="me">Моя семья</button>
+            <button class="tab is-active" type="button" data-tab="tree"><span aria-hidden="true">🌳</span>Древо</button>
+            <button class="tab" type="button" data-tab="list"><span aria-hidden="true">☷</span>Список</button>
+            <button class="tab" type="button" data-tab="gallery"><span aria-hidden="true">▧</span>Фото</button>
+            <button class="tab" type="button" data-tab="birthdays"><span aria-hidden="true">🎂</span>Дни рождения</button>
+            <button class="tab" type="button" data-tab="events"><span aria-hidden="true">◷</span>События</button>
+            <button class="tab" type="button" data-tab="me"><span aria-hidden="true">♥</span>Моя семья</button>
         </nav>
 
         <section id="tree-view" class="view">
+            <div class="mobile-tree-toolbar">
+                <button id="open-filters" type="button" aria-expanded="false">
+                    <span aria-hidden="true">⌕</span>
+                    <span>Поиск и фильтры</span>
+                    <b aria-hidden="true">☰</b>
+                </button>
+            </div>
+            <button id="filter-backdrop" class="filter-backdrop" type="button" aria-label="Закрыть фильтры" hidden></button>
             <form id="filters" class="filters">
+                <div class="mobile-filter-header">
+                    <strong>Поиск и фильтры</strong>
+                    <button id="close-filters" type="button" aria-label="Закрыть">×</button>
+                </div>
                 <input name="q" type="search" placeholder="Найти человека…" autocomplete="off" aria-label="Поиск">
                 <select name="gender" aria-label="Пол">
                     <option value="">Любой пол</option>
@@ -78,6 +96,7 @@
                     <option value="nephews">Мои племянники</option>
                 </select>
                 <button id="reset-filters" type="button" title="Сбросить фильтры">↺</button>
+                <button id="apply-filters" class="apply-filters" type="button">Готово</button>
             </form>
 
             <div id="tree" aria-label="Семейное древо"></div>

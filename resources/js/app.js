@@ -1475,6 +1475,21 @@ $('#filters').addEventListener('input', () => {
     debounce = setTimeout(loadTree, 280);
 });
 $('#filters').addEventListener('change', loadTree);
+const filtersPanel = $('#filters');
+const filterBackdrop = $('#filter-backdrop');
+const openFiltersButton = $('#open-filters');
+const setFiltersOpen = (open) => {
+    filtersPanel.classList.toggle('is-open', open);
+    filterBackdrop.hidden = !open;
+    openFiltersButton.setAttribute('aria-expanded', String(open));
+    if (open) {
+        window.setTimeout(() => filtersPanel.querySelector('[name="q"]')?.focus(), 80);
+    }
+};
+openFiltersButton.addEventListener('click', () => setFiltersOpen(true));
+$('#close-filters').addEventListener('click', () => setFiltersOpen(false));
+$('#apply-filters').addEventListener('click', () => setFiltersOpen(false));
+filterBackdrop.addEventListener('click', () => setFiltersOpen(false));
 $('#reset-filters').addEventListener('click', () => {
     $('#filters').reset();
     loadTree();
