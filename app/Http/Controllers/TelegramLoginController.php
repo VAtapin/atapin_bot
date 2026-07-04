@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\FamilyTree;
 use App\Models\TelegramUser;
 use App\Models\User;
+use App\Services\AnalyticsService;
 use App\Services\AuthRedirector;
 use App\Services\ExternalIdentityService;
 use App\Services\TelegramWebLogin;
@@ -80,7 +81,7 @@ class TelegramLoginController extends Controller
     {
         if ($request->filled('error')) {
             return redirect()->route('login')
-                ->with('telegram_auth_error', 'Вход через Telegram отменён.');
+                ->with('telegram_auth_error', __('public.messages.telegram_cancelled'));
         }
 
         $oidc = $request->session()->pull('telegram_oidc');
@@ -91,7 +92,7 @@ class TelegramLoginController extends Controller
             || time() - (int) ($oidc['created_at'] ?? 0) > 600
         ) {
             return redirect()->route('login')
-                ->with('telegram_auth_error', 'Сессия входа устарела. Попробуйте ещё раз.');
+                ->with('telegram_auth_error', __('public.messages.telegram_expired'));
         }
 
         try {
@@ -118,14 +119,14 @@ class TelegramLoginController extends Controller
             report($exception);
 
             return redirect()->route('login')
-                ->with('telegram_auth_error', 'Telegram не подтвердил вход. Попробуйте ещё раз.');
+                ->with('telegram_auth_error', __('public.messages.telegram_failed'));
         }
 
         $telegramId = (int) ($claims->id ?? $claims->sub ?? 0);
 
         if ($telegramId <= 0) {
             return redirect()->route('login')
-                ->with('telegram_auth_error', 'Telegram не передал ID пользователя.');
+                ->with('telegram_auth_error', __('public.messages.telegram_missing_id'));
         }
 
         $nameParts = preg_split('/\s+/u', trim((string) ($claims->name ?? '')), 2);
@@ -193,6 +194,20 @@ class TelegramLoginController extends Controller
         $request->session()->put('family_user_id', $familyUser->id);
         $request->session()->put('family_tree_id', $tree?->id);
         Auth::login($familyUser);
+        app(AnalyticsService::class)->linkUser($request, $familyUser);
+        app(AnalyticsService::class)->record(
+            'login',
+            $request,
+            $familyUser,
+            $tree,
+            ['method' => 'telegram', 'tree_id' => $tree?->id],
+            queueForBrowser: true,
+        );
+        if (! $familyUser->privacy_accepted_at) {
+            $request->session()->put('privacy_return_tree_id', $tree?->id);
+
+            return redirect()->route('privacy-consent.show');
+        }
 
         if (
             ! empty($oidc['return_host'])
@@ -218,6 +233,7 @@ class TelegramLoginController extends Controller
 
     public function logout(Request $request): RedirectResponse
     {
+        app(AnalyticsService::class)->record('logout', $request, $request->user());
         Auth::logout();
         $request->session()->forget([
             'family_telegram_user_id',
@@ -232,7 +248,7 @@ class TelegramLoginController extends Controller
     private function validateIdToken(string $idToken, string $nonce): object
     {
         if ($idToken === '') {
-            throw ValidationException::withMessages(['id_token' => 'ID token отсутствует.']);
+            throw ValidationException::withMessages(['id_token' => __('public.messages.telegram_missing_token')]);
         }
 
         $jwks = Cache::remember('telegram-oidc-jwks', now()->addHours(6), function (): array {
@@ -251,7 +267,7 @@ class TelegramLoginController extends Controller
             || ! isset($claims->nonce)
             || ! hash_equals($nonce, (string) $claims->nonce)
         ) {
-            throw ValidationException::withMessages(['id_token' => 'Некорректные claims Telegram.']);
+            throw ValidationException::withMessages(['id_token' => __('public.messages.telegram_invalid_token')]);
         }
 
         return $claims;
@@ -263,7 +279,7 @@ class TelegramLoginController extends Controller
             config('services.telegram.oidc_client_id')
             && config('services.telegram.oidc_client_secret'),
             503,
-            'Вход через Telegram ещё не настроен.',
+            __('public.messages.telegram_not_configured'),
         );
     }
 

@@ -38,7 +38,7 @@ class TwoFactorController extends Controller
             && Hash::check($data['code'], $hash);
 
         if ($totpCounter === false && ! $fallbackIsValid) {
-            throw ValidationException::withMessages(['code' => 'Неверный или устаревший код.']);
+            throw ValidationException::withMessages(['code' => __('public.messages.code_invalid')]);
         }
 
         if ($totpCounter !== false) {

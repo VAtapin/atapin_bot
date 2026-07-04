@@ -102,6 +102,14 @@ class UserResource extends Resource
                 IconColumn::make('two_factor_required')
                     ->label('2FA обязательна')
                     ->boolean(),
+                TextColumn::make('privacy_accepted_at')
+                    ->label('Согласие на данные')
+                    ->dateTime('d.m.Y H:i')
+                    ->placeholder('Нет')
+                    ->toggleable(),
+                TextColumn::make('privacy_policy_version')
+                    ->label('Версия политики')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

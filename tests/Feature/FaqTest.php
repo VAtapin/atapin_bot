@@ -12,7 +12,7 @@ class FaqTest extends TestCase
 
     public function test_public_faq_has_search_categories_and_quick_start(): void
     {
-        $this->get('/faq')
+        $this->get('/faq?lang=ru')
             ->assertOk()
             ->assertSee('Быстрый старт')
             ->assertSee('faq-search', false)
@@ -24,7 +24,7 @@ class FaqTest extends TestCase
         $item = FaqItem::query()->firstOrFail();
         $item->update(['is_published' => false]);
 
-        $this->get('/faq')
+        $this->get('/faq?lang=ru')
             ->assertOk()
             ->assertDontSee($item->question);
     }

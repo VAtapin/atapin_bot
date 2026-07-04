@@ -6,6 +6,7 @@ use App\Models\FamilyTree;
 use App\Models\Person;
 use App\Models\TreeMembership;
 use App\Models\User;
+use App\Services\AnalyticsService;
 use App\Services\AuthRedirector;
 use App\Support\CurrentTree;
 use App\Support\SafeReturnUrl;
@@ -34,7 +35,7 @@ class PublicAuthController extends Controller
         ]);
     }
 
-    public function store(Request $request, AuthRedirector $redirector): RedirectResponse
+    public function store(Request $request, AuthRedirector $redirector, AnalyticsService $analytics): RedirectResponse
     {
         $data = $request->validate([
             'login' => ['required', 'string', 'max:255'],
@@ -47,7 +48,7 @@ class PublicAuthController extends Controller
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
             throw ValidationException::withMessages([
-                'login' => 'Слишком много попыток. Повторите через '.RateLimiter::availableIn($key).' сек.',
+                'login' => __('public.messages.too_many', ['seconds' => RateLimiter::availableIn($key)]),
             ]);
         }
 
@@ -88,13 +89,24 @@ class PublicAuthController extends Controller
             RateLimiter::hit($key, 60);
 
             throw ValidationException::withMessages([
-                'login' => 'Неверный логин или пароль.',
+                'login' => __('public.messages.invalid_login'),
             ]);
         }
 
         RateLimiter::clear($key);
         $request->session()->regenerate();
         $request->session()->put('family_user_id', Auth::id());
+        $analytics->linkUser($request, $request->user());
+        $analytics->record('login', $request, $request->user(), $tree, [
+            'method' => 'password',
+            'tree_id' => $tree?->id,
+        ], null, true);
+
+        if (! $request->user()->privacy_accepted_at) {
+            $request->session()->put('privacy_return_tree_id', $tree?->id);
+
+            return redirect()->route('privacy-consent.show');
+        }
 
         if (
             ($returnTo = SafeReturnUrl::path($data['return_to'] ?? null))
@@ -109,8 +121,9 @@ class PublicAuthController extends Controller
         return $redirector->redirect($request->user(), $tree);
     }
 
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request, AnalyticsService $analytics): RedirectResponse
     {
+        $analytics->record('logout', $request, $request->user());
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

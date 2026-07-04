@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FamilyTree;
 use App\Models\TelegramLoginToken;
+use App\Services\AnalyticsService;
 use App\Services\AuthRedirector;
 use App\Support\SafeReturnUrl;
 use Illuminate\Http\RedirectResponse;
@@ -32,7 +33,7 @@ class TelegramLinkLoginController extends Controller
                     && ! $loginToken->telegramUser->user?->is_super_admin
                 ),
                 403,
-                'Ссылка входа недействительна или уже использована.',
+                __('public.messages.telegram_link_invalid'),
             );
 
             $loginToken->update(['used_at' => now()]);
@@ -53,6 +54,22 @@ class TelegramLinkLoginController extends Controller
         $tree = $loginToken->telegramUser->current_tree_id
             ? FamilyTree::query()->find($loginToken->telegramUser->current_tree_id)
             : null;
+        if ($loginToken->telegramUser->user) {
+            app(AnalyticsService::class)->linkUser($request, $loginToken->telegramUser->user);
+            app(AnalyticsService::class)->record(
+                'login',
+                $request,
+                $loginToken->telegramUser->user,
+                $tree,
+                ['method' => 'telegram_link', 'tree_id' => $tree?->id],
+                queueForBrowser: true,
+            );
+            if (! $loginToken->telegramUser->user->privacy_accepted_at) {
+                $request->session()->put('privacy_return_tree_id', $tree?->id);
+
+                return redirect()->route('privacy-consent.show');
+            }
+        }
 
         if (
             $request->attributes->get('customDomainTree')

@@ -3,7 +3,9 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Pages\AccountIntegrity;
+use App\Filament\Pages\AnalyticsDashboard;
 use App\Filament\Pages\SystemHealth;
+use App\Filament\Resources\AnalyticsEvents\AnalyticsEventResource;
 use App\Filament\Resources\ChangeLogs\ChangeLogResource;
 use App\Filament\Resources\CmsPages\CmsPageResource;
 use App\Filament\Resources\DeletedTreeAudits\DeletedTreeAuditResource;
@@ -54,6 +56,7 @@ class AdminPanelProvider extends PanelProvider
             ->sidebarCollapsibleOnDesktop()
             ->resources([
                 FamilyTreeResource::class,
+                AnalyticsEventResource::class,
                 DeletedTreeAuditResource::class,
                 UserResource::class,
                 SuperAdministratorResource::class,
@@ -70,6 +73,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->pages([
                 Dashboard::class,
+                AnalyticsDashboard::class,
                 SystemHealth::class,
                 AccountIntegrity::class,
             ])

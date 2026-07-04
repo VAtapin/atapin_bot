@@ -40,6 +40,16 @@ class TreeImportService
                 'statistics' => $statistics,
                 'completed_at' => now(),
             ]);
+            app(AnalyticsService::class)->record(
+                $import->format.'_imported',
+                tree: $import->tree,
+                parameters: [
+                    'tree_id' => $import->tree_id,
+                    'import_id' => $import->id,
+                    'format' => $import->format,
+                ],
+                deduplicationKey: "{$import->format}_imported:{$import->id}",
+            );
         } catch (Throwable $exception) {
             report($exception);
             $import->update([

@@ -7,6 +7,8 @@ export default defineConfig({
     plugins: [
         laravel({
             input: [
+                'resources/css/public.css',
+                'resources/js/public.js',
                 'resources/css/app.css',
                 'resources/js/app.js',
                 'resources/js/invitation-qr.js',

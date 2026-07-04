@@ -17,36 +17,51 @@ class PublicSiteController extends Controller
 
         return view('public.home', [
             'plans' => Plan::query()->where('is_active', true)->orderBy('sort_order')->get(),
-            'footerPages' => CmsPage::query()
-                ->where('is_published', true)
-                ->orderBy('sort_order')
-                ->get(['slug', 'title']),
+            'footerPages' => $this->footerPages(),
         ]);
     }
 
-    public function page(CmsPage $page): View
+    public function page(string $slug): View
     {
-        abort_unless($page->is_published, 404);
+        $page = $this->findPage($slug, false);
 
         return view('public.page', [
             'page' => $page,
-            'footerPages' => CmsPage::query()
-                ->where('is_published', true)
-                ->orderBy('sort_order')
-                ->get(['slug', 'title']),
+            'footerPages' => $this->footerPages(),
         ]);
     }
 
-    public function preview(CmsPage $page): View
+    public function preview(string $slug): View
     {
         abort_unless(auth()->user()?->is_super_admin, 403);
+        $page = $this->findPage($slug, true);
 
         return view('public.page', [
             'page' => $page,
-            'footerPages' => CmsPage::query()
-                ->where('is_published', true)
-                ->orderBy('sort_order')
-                ->get(['slug', 'title']),
+            'footerPages' => $this->footerPages(),
         ]);
+    }
+
+    private function findPage(string $slug, bool $includeDrafts): CmsPage
+    {
+        $query = CmsPage::query()
+            ->where('slug', $slug)
+            ->whereIn('locale', [app()->getLocale(), 'ru'])
+            ->when(! $includeDrafts, fn ($builder) => $builder->where('is_published', true))
+            ->orderByRaw('CASE WHEN locale = ? THEN 0 ELSE 1 END', [app()->getLocale()]);
+
+        return $query->firstOrFail();
+    }
+
+    private function footerPages()
+    {
+        return CmsPage::query()
+            ->where('is_published', true)
+            ->whereIn('locale', [app()->getLocale(), 'ru'])
+            ->orderByRaw('CASE WHEN locale = ? THEN 0 ELSE 1 END', [app()->getLocale()])
+            ->orderBy('sort_order')
+            ->get(['locale', 'slug', 'title'])
+            ->unique('slug')
+            ->values();
     }
 }

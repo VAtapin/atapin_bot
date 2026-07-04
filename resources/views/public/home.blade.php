@@ -1,57 +1,135 @@
 @extends('public.layout')
 
-@section('title', 'Я и дом мой — семейная история и память рода')
+@section('title', __('public.meta.home_title'))
+@section('description', __('public.meta.home_description'))
+@section('analytics_event', 'view_home')
 
 @section('content')
-<style>
-    .hero { padding:80px 0 55px; text-align:center }.hero h1 { max-width:850px; margin:0 auto 18px; font:700 clamp(44px,8vw,78px)/.98 Georgia,serif }
-    .hero p { max-width:650px; margin:0 auto 28px; color:var(--muted); font-size:20px }.hero-actions { display:flex; justify-content:center; gap:10px; flex-wrap:wrap }
-    .features,.plans { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:35px }.section { padding:55px 0 }.section h2 { text-align:center; font:700 38px Georgia,serif }
-    .feature,.plan { padding:25px; border:1px solid var(--line); border-radius:18px; background:var(--card) }.feature i { font-style:normal; font-size:30px }.feature h3,.plan h3 { margin:10px 0 5px }
-    .plan strong { display:block; margin:12px 0; font-size:24px }.privacy { padding:38px; border-radius:24px; background:#e9ecdf; text-align:center }
-    @media(max-width:760px){.hero{padding-top:45px}.features,.plans{grid-template-columns:1fr}}
-</style>
-<section class="hero wrap">
-    <p><strong>Семейная история и память рода</strong></p>
-    <h1>История семьи должна жить</h1>
-    <p>Закрытое семейное пространство для родословной, фотографий, воспоминаний и важных дат.</p>
+@php
+    try {
+        $registrationEnabled = \App\Models\PlatformSetting::value('registration_enabled', true);
+    } catch (\Throwable) {
+        $registrationEnabled = false;
+    }
+@endphp
+<section class="public-hero public-wrap">
+    <p class="eyebrow">🌿 {{ __('public.home.eyebrow') }}</p>
+    <h1>{{ __('public.home.title') }}</h1>
+    <p class="public-hero__lead">{{ __('public.home.lead') }}</p>
+
     <div class="hero-actions">
-        @if(\App\Models\PlatformSetting::value('registration_enabled', true))
-            <a class="button" href="{{ route('register') }}">Создать семейное дерево</a>
+        @if($registrationEnabled)
+            <a class="button" data-analytics-click="cta_register_click" href="{{ route('register') }}">{{ __('public.home.create') }}</a>
         @endif
-        <a class="button secondary" href="{{ route('public.page', 'about') }}">Узнать подробнее</a>
+        <a class="button secondary" href="#how-it-works">{{ __('public.home.how_link') }}</a>
+    </div>
+
+    <div class="trust-row" aria-label="{{ __('public.home.trust_label') }}">
+        @foreach(__('public.home.trust') as $item)
+            <span>{{ $item }}</span>
+        @endforeach
     </div>
 </section>
-<section class="section wrap">
-    <h2>Вся семейная память в одном месте</h2>
-    <div class="features">
-        <article class="feature"><i>🌿</i><h3>Родословная</h3><p>Люди, поколения и понятные семейные связи.</p></article>
-        <article class="feature"><i>📷</i><h3>Семейный архив</h3><p>Фотографии, альбомы, документы и истории.</p></article>
-        <article class="feature"><i>🔒</i><h3>Только для своих</h3><p>Доступ получают лишь приглашённые и подтверждённые участники.</p></article>
+
+<section class="public-section public-wrap">
+    <div class="story-panel">
+        <p>{{ __('public.home.story') }}</p>
     </div>
 </section>
-<section class="section wrap">
-    <div class="privacy">
-        <h2>Приватность по умолчанию</h2>
-        <p>Семейные деревья закрыты от посторонних. Владелец сам решает, кто может смотреть и редактировать данные.</p>
-    </div>
-</section>
-@if($plans->isNotEmpty())
-<section class="section wrap">
-    <h2>Тарифы</h2>
-    <div class="plans">
-        @foreach($plans as $plan)
-            <article class="plan">
-                <h3>{{ $plan->name }}</h3>
-                <p>{{ $plan->description }}</p>
-                <strong>{{ $plan->price_monthly > 0 ? $plan->price_monthly.' '.$plan->currency.' / месяц' : 'Бесплатно' }}</strong>
-                <p>До {{ number_format($plan->people_limit, 0, ',', ' ') }} человек · {{ round($plan->storage_limit_bytes / 1073741824, 1) }} ГБ</p>
-                @if(\App\Models\PlatformSetting::value('registration_enabled', true))
-                    <a class="button" href="{{ route('register') }}">Начать</a>
-                @endif
+
+<section class="public-section public-wrap">
+    <h2>{{ __('public.home.features_title') }}</h2>
+    <p class="section-lead">{{ __('public.home.features_lead') }}</p>
+    <div class="feature-grid">
+        @foreach(__('public.home.features') as $feature)
+            <article class="feature-card">
+                <span class="feature-card__icon" aria-hidden="true">{{ $feature['icon'] }}</span>
+                <h3>{{ $feature['title'] }}</h3>
+                <p>{{ $feature['text'] }}</p>
             </article>
         @endforeach
     </div>
 </section>
+
+<section class="public-section public-wrap" id="how-it-works">
+    <h2>{{ __('public.home.how_title') }}</h2>
+    <p class="section-lead">{{ __('public.home.how_lead') }}</p>
+    <div class="step-grid">
+        @foreach(__('public.home.steps') as $step)
+            <article class="step-card">
+                <h3>{{ $step['title'] }}</h3>
+                <p>{{ $step['text'] }}</p>
+            </article>
+        @endforeach
+    </div>
+</section>
+
+<section class="public-section public-wrap">
+    <div class="privacy-panel">
+        <h2>{{ __('public.home.privacy_title') }}</h2>
+        <p>{{ __('public.home.privacy_text') }}</p>
+    </div>
+</section>
+
+@if($plans->isNotEmpty())
+    <section class="public-section public-wrap" data-analytics-view="view_pricing">
+        <h2>{{ __('public.home.plans_title') }}</h2>
+        <p class="section-lead">{{ __('public.home.plans_lead') }}</p>
+        <div class="plan-grid">
+            @foreach($plans as $plan)
+                <article class="plan-card">
+                    <h3>{{ \Illuminate\Support\Facades\Lang::has("public.plans.{$plan->code}.name")
+                        ? __("public.plans.{$plan->code}.name")
+                        : $plan->name }}</h3>
+                    <p>{{ \Illuminate\Support\Facades\Lang::has("public.plans.{$plan->code}.description")
+                        ? __("public.plans.{$plan->code}.description")
+                        : $plan->description }}</p>
+                    <strong class="plan-card__price">
+                        {{ $plan->price_monthly > 0
+                            ? __('public.home.per_month', ['price' => $plan->price_monthly, 'currency' => $plan->currency])
+                            : __('public.home.free') }}
+                    </strong>
+                    <p class="plan-card__limits">
+                        {{ __('public.home.plan_limits', [
+                            'people' => number_format($plan->people_limit, 0, ',', ' '),
+                            'storage' => round($plan->storage_limit_bytes / 1073741824, 1),
+                        ]) }}
+                    </p>
+                    @if($registrationEnabled)
+                        <a class="button" data-analytics-click="cta_register_click" href="{{ route('register') }}">{{ __('public.home.start') }}</a>
+                    @endif
+                </article>
+            @endforeach
+        </div>
+    </section>
 @endif
+
+<section class="public-section public-wrap">
+    <h2>{{ __('public.home.questions_title') }}</h2>
+    <p class="section-lead">{{ __('public.home.questions_lead') }}</p>
+    <div class="home-faq-grid">
+        @foreach(__('public.home.questions') as $question)
+            <article class="home-faq-card">
+                <h3>{{ $question['title'] }}</h3>
+                <p>{{ $question['text'] }}</p>
+            </article>
+        @endforeach
+    </div>
+    <div class="section-actions">
+        <a class="button secondary" href="{{ route('faq') }}">{{ __('public.home.open_faq') }}</a>
+    </div>
+</section>
+
+<section class="public-section public-wrap">
+    <div class="final-cta">
+        <h2>{{ __('public.home.cta_title') }}</h2>
+        <p>{{ __('public.home.cta_text') }}</p>
+        <div class="hero-actions">
+            @if($registrationEnabled)
+                <a class="button" data-analytics-click="cta_register_click" href="{{ route('register') }}">{{ __('public.home.create') }}</a>
+            @endif
+            <a class="button secondary" href="{{ route('public.page', 'about') }}">{{ __('public.nav.about') }}</a>
+        </div>
+    </div>
+</section>
 @endsection

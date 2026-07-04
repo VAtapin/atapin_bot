@@ -10,6 +10,7 @@ use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
 use App\Models\Setting;
+use App\Services\AnalyticsService;
 use App\Services\ColorContrast;
 use App\Services\FamilyBranchService;
 use App\Services\TreeCacheService;
@@ -28,13 +29,28 @@ class MiniAppController extends Controller
         ?Person $person = null,
     ): View {
         $tree ??= app(CurrentTree::class)->get();
+        $platform = $request->has('tgWebAppPlatform')
+            ? 'telegram'
+            : ($request->has('vk_user_id') && $request->has('sign')
+                ? 'vk'
+                : mb_strtolower($request->string('platform', 'web')->toString()));
+        $platform = in_array($platform, ['web', 'telegram', 'vk', 'ok', 'max'], true) ? $platform : 'web';
+        if ($tree) {
+            app(AnalyticsService::class)->record(
+                'view_family_tree_landing',
+                $request,
+                $request->user(),
+                $tree,
+                ['tree_id' => $tree->id],
+            );
+        }
         if ($person && $tree) {
             abort_unless((int) $person->tree_id === (int) $tree->id, 404);
         }
 
         return view('family.app', [
-            'familyName' => $tree?->name ?: Setting::value('family_name', 'Наша семья'),
-            'familySubtitle' => $tree?->subtitle ?: 'Семейная история и память рода',
+            'familyName' => $tree?->name ?: Setting::value('family_name', __('miniapp.default_family_name')),
+            'familySubtitle' => $tree?->subtitle ?: __('miniapp.default_family_subtitle'),
             'familyCrestUrl' => $tree?->crest_url,
             'familyAccent' => $tree?->accent_color ?: '#68734b',
             'familyAccentText' => app(ColorContrast::class)->foreground($tree?->accent_color),
@@ -64,7 +80,7 @@ class MiniAppController extends Controller
                 'treeId' => $tree?->id,
                 'treeSlug' => $tree?->slug,
                 'accentColor' => $tree?->accent_color,
-                'platform' => $request->query('platform', 'web'),
+                'platform' => $platform,
                 'vkAppId' => config('services.vk.app_id'),
                 'managementUrl' => $tree && $request->user()?->canManageTree($tree)
                     ? '/manage/'.$tree->slug
@@ -345,7 +361,7 @@ class MiniAppController extends Controller
                     'taken_at' => $photo->taken_at?->toDateString(),
                     'person_id' => $isUnassociated ? null : (string) $photo->person_id,
                     'person_name' => $isUnassociated
-                        ? ($photo->title ?: 'Фотография без привязки')
+                        ? ($photo->title ?: __('miniapp.unassociated_photo'))
                         : $photo->person->full_name,
                     'is_associated' => ! $isUnassociated,
                 ];
@@ -606,8 +622,10 @@ class MiniAppController extends Controller
 
                 return [
                     'id' => (string) $partnership->id,
-                    'title' => $partnership->partnerOne->full_name
-                        .' и '.$partnership->partnerTwo->full_name,
+                    'title' => __('miniapp.pair_names', [
+                        'one' => $partnership->partnerOne->full_name,
+                        'two' => $partnership->partnerTwo->full_name,
+                    ]),
                     'date' => $next->toDateString(),
                     'days' => $today->diffInDays($next),
                     'years' => $partnership->started_at->diffInYears($next),
@@ -637,7 +655,7 @@ class MiniAppController extends Controller
                 ->get()
                 ->map(fn (Congratulation $item): array => [
                     'id' => (string) $item->id,
-                    'from' => $item->senderUser?->name ?: 'Участник семьи',
+                    'from' => $item->senderUser?->name ?: __('miniapp.family_member'),
                     'message' => $item->message,
                     'occasion' => $item->occasion,
                     'created_at' => $item->created_at?->toIso8601String(),

@@ -23,7 +23,11 @@ class PaymentService
         ?User $user = null,
         ?string $idempotencyKey = null,
     ): Payment {
-        return DB::transaction(function () use (
+        $wasActive = Subscription::query()
+            ->where('tree_id', $tree->id)
+            ->where('status', 'active')
+            ->exists();
+        $payment = DB::transaction(function () use (
             $tree,
             $plan,
             $provider,
@@ -95,5 +99,47 @@ class PaymentService
 
             return $payment->fresh();
         });
+
+        $parameters = [
+            'tree_id' => $tree->id,
+            'plan_id' => $plan->id,
+            'plan_code' => $plan->code,
+            'plan_name' => $plan->name,
+            'currency' => strtoupper($currency),
+            'value' => (float) $amount,
+            'payment_id' => $payment->id,
+        ];
+        $analytics = app(AnalyticsService::class);
+        if ($status === 'paid') {
+            $analytics->record(
+                'purchase',
+                user: $user,
+                tree: $tree,
+                parameters: $parameters,
+                deduplicationKey: "purchase:{$provider}:{$reference}",
+                queueForBrowser: true,
+            );
+            if ($wasActive) {
+                $analytics->record(
+                    'subscription_renewed',
+                    user: $user,
+                    tree: $tree,
+                    parameters: $parameters,
+                    deduplicationKey: 'subscription_renewed:'.$payment->id,
+                    queueForBrowser: true,
+                );
+            }
+        } elseif ($status === 'failed') {
+            $analytics->record(
+                'payment_failed',
+                user: $user,
+                tree: $tree,
+                parameters: $parameters,
+                deduplicationKey: "payment_failed:{$provider}:{$reference}",
+                queueForBrowser: true,
+            );
+        }
+
+        return $payment;
     }
 }

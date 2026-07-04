@@ -50,6 +50,17 @@ class TreeAccessService
             ])->save();
             $invitation->increment('uses_count');
 
+            app(AnalyticsService::class)->record(
+                'invite_accepted',
+                user: $user,
+                tree: $membership->tree,
+                parameters: [
+                    'tree_id' => $membership->tree_id,
+                    'invitation_id' => $invitation->id,
+                ],
+                deduplicationKey: "invite_accepted:{$invitation->id}:user:{$user->id}",
+            );
+
             return $membership;
         });
     }

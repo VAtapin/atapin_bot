@@ -8,6 +8,7 @@ use App\Models\PlatformSetting;
 use App\Models\Subscription;
 use App\Models\TreeMembership;
 use App\Models\User;
+use App\Services\AnalyticsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -27,7 +28,7 @@ class RegistrationController extends Controller
         return view('public.register');
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, AnalyticsService $analytics): RedirectResponse
     {
         abort_unless(PlatformSetting::value('registration_enabled', true), 403);
 
@@ -48,24 +49,26 @@ class RegistrationController extends Controller
                 Rule::notIn(['person', 'login', 'register', 'admin', 'manage', 'api']),
                 'unique:family_trees,slug',
             ],
+            'privacy_consent' => ['accepted'],
         ], [
-            'required' => 'Заполните поле «:attribute».',
-            'email.email' => 'Введите корректный адрес электронной почты.',
-            'email.unique' => 'Этот email уже зарегистрирован. Войдите или восстановите доступ.',
-            'password.confirmed' => 'Пароли не совпадают.',
-            'password.min' => 'Пароль должен содержать не менее :min символов.',
-            'password.letters' => 'Пароль должен содержать хотя бы одну букву.',
-            'password.numbers' => 'Пароль должен содержать хотя бы одну цифру.',
-            'tree_slug.alpha_dash' => 'Адрес может содержать только латинские буквы, цифры, дефис и подчёркивание.',
-            'tree_slug.ascii' => 'Для адреса используйте только латинские символы.',
-            'tree_slug.not_in' => 'Этот адрес зарезервирован системой.',
-            'tree_slug.unique' => 'Этот адрес дерева уже занят.',
+            'required' => __('public.messages.required'),
+            'email.email' => __('public.messages.email'),
+            'email.unique' => __('public.messages.email_unique'),
+            'password.confirmed' => __('public.messages.password_confirmed'),
+            'password.min' => __('public.messages.password_min'),
+            'password.letters' => __('public.messages.password_letters'),
+            'tree_slug.alpha_dash' => __('public.messages.slug_format'),
+            'tree_slug.ascii' => __('public.messages.slug_ascii'),
+            'tree_slug.not_in' => __('public.messages.slug_reserved'),
+            'tree_slug.unique' => __('public.messages.slug_unique'),
+            'privacy_consent.accepted' => __('public.auth.privacy_required'),
         ], [
-            'name' => 'Ваше имя',
-            'email' => 'Email',
-            'password' => 'Пароль',
-            'tree_name' => 'Название семьи',
-            'tree_slug' => 'Адрес дерева',
+            'name' => __('public.auth.name'),
+            'email' => __('public.common.email'),
+            'password' => __('public.common.password'),
+            'tree_name' => __('public.auth.tree_name'),
+            'tree_slug' => __('public.auth.tree_slug'),
+            'privacy_consent' => __('public.auth.privacy_link'),
         ]);
         if ($validator->fails()) {
             $response = back()->withErrors($validator)->withInput($request->except(['password', 'password_confirmation']));
@@ -76,8 +79,9 @@ class RegistrationController extends Controller
             return $response;
         }
         $data = $validator->validated();
+        $privacyIpHash = $analytics->hashIp($request->ip());
 
-        [$user, $tree] = DB::transaction(function () use ($data): array {
+        [$user, $tree] = DB::transaction(function () use ($data, $privacyIpHash): array {
             $user = User::query()->create([
                 'name' => $data['name'],
                 'email' => mb_strtolower($data['email']),
@@ -85,6 +89,9 @@ class RegistrationController extends Controller
                 'is_active' => true,
                 'two_factor_enabled' => false,
                 'two_factor_required' => false,
+                'privacy_accepted_at' => now(),
+                'privacy_policy_version' => (string) config('privacy.policy_version'),
+                'privacy_ip_hash' => $privacyIpHash,
             ]);
             $plan = Plan::query()->where('code', 'family')->first();
             $tree = FamilyTree::query()->create([
@@ -92,7 +99,7 @@ class RegistrationController extends Controller
                 'plan_id' => $plan?->id,
                 'name' => $data['tree_name'],
                 'slug' => Str::lower($data['tree_slug']),
-                'subtitle' => 'Семейная история и память рода',
+                'subtitle' => __('public.tagline'),
                 'status' => 'active',
                 'trial_ends_at' => now()->addDays(30),
             ]);
@@ -123,6 +130,15 @@ class RegistrationController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
         $request->session()->put('family_tree_id', $tree->id);
+        $analytics->linkUser($request, $user);
+        $analytics->record('sign_up', $request, $user, $tree, [
+            'tree_id' => $tree->id,
+            'method' => 'password',
+        ], "sign_up:user:{$user->id}", true);
+        $analytics->record('family_tree_created', $request, $user, $tree, [
+            'tree_id' => $tree->id,
+            'plan_id' => $tree->plan_id,
+        ], "family_tree_created:tree:{$tree->id}", true);
 
         return redirect()->route('account', ['welcome' => 1]);
     }

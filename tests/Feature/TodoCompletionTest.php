@@ -30,6 +30,7 @@ class TodoCompletionTest extends TestCase
             'password_confirmation' => 'different-password',
             'tree_name' => 'Семья',
             'tree_slug' => 'admin',
+            'privacy_consent' => '1',
         ]);
 
         $response->assertRedirect('/register')

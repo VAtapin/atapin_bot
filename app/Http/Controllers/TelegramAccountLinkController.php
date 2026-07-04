@@ -13,7 +13,7 @@ class TelegramAccountLinkController extends Controller
         TelegramAccountLinkService $links,
     ): RedirectResponse {
         if ($request->user()->externalIdentities()->where('provider', 'telegram')->exists()) {
-            return redirect()->route('account')->with('status', 'Telegram уже подключён.');
+            return redirect()->route('account')->with('status', __('public.messages.telegram_connected'));
         }
 
         return redirect()->away($links->createDeepLink($request->user()));

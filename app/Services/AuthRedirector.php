@@ -11,6 +11,12 @@ class AuthRedirector
 {
     public function redirect(User $user, ?FamilyTree $requestedTree = null): RedirectResponse
     {
+        if (! $user->privacy_accepted_at) {
+            session()->put('privacy_return_tree_id', $requestedTree?->id);
+
+            return redirect()->route('privacy-consent.show');
+        }
+
         if ($requestedTree) {
             if ($user->is_super_admin) {
                 return redirect()->route('family.tree', $requestedTree);

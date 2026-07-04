@@ -9,6 +9,7 @@ class FaqCategory extends Model
 {
     protected $fillable = [
         'title',
+        'locale',
         'slug',
         'description',
         'sort_order',

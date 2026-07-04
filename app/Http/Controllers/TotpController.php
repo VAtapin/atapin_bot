@@ -32,7 +32,7 @@ class TotpController extends Controller
 
         if ($counter === false) {
             throw ValidationException::withMessages([
-                'code' => 'Неверный код. Проверьте время на телефоне и попробуйте ещё раз.',
+                'code' => __('public.messages.totp_invalid'),
             ]);
         }
 
@@ -47,7 +47,7 @@ class TotpController extends Controller
         $redirectTo = (string) $request->session()->pull('two_factor_intended_url');
 
         return redirect()->to($redirectTo !== '' ? $redirectTo : route('account'))
-            ->with('status', 'Приложение-аутентификатор подключено.');
+            ->with('status', __('public.messages.totp_connected'));
     }
 
     public function destroy(Request $request, TotpService $totp): RedirectResponse
@@ -55,7 +55,7 @@ class TotpController extends Controller
         abort_if(
             $request->user()->is_super_admin || $request->user()->two_factor_required,
             422,
-            'Администратор сделал двухфакторную защиту обязательной для этой учётной записи.',
+            __('public.messages.totp_required'),
         );
 
         $data = $request->validate(['code' => ['required', 'digits:6']]);
@@ -66,7 +66,7 @@ class TotpController extends Controller
         );
 
         if ($counter === false) {
-            throw ValidationException::withMessages(['code' => 'Неверный код подтверждения.']);
+            throw ValidationException::withMessages(['code' => __('public.messages.code_invalid')]);
         }
 
         $request->user()->forceFill([
@@ -76,6 +76,6 @@ class TotpController extends Controller
             'two_factor_last_used_counter' => null,
         ])->save();
 
-        return back()->with('status', 'Приложение-аутентификатор отключено.');
+        return back()->with('status', __('public.messages.totp_disabled'));
     }
 }

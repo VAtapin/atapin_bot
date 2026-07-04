@@ -1,30 +1,31 @@
 @extends('public.layout')
 
-@section('title', 'Приложение-аутентификатор — Я и дом мой')
+@section('title', __('public.account.setup_title'))
+@section('robots', 'noindex,nofollow')
 
 @section('content')
-<section class="content-card" style="max-width:620px">
-    <h1>Подключить приложение-аутентификатор</h1>
-    <p>Откройте Яндекс ID, 2FAS, Aegis, Microsoft Authenticator или другое приложение с поддержкой TOTP и отсканируйте QR-код.</p>
+<section class="content-card content-card--narrow">
+    <h1>{{ __('public.account.setup_heading') }}</h1>
+    <p>{{ __('public.account.setup_text') }}</p>
 
-    <div style="display:grid;place-items:center;margin:24px 0">
-        <img src="{{ $qrCode }}" width="240" height="240" alt="QR-код для подключения приложения-аутентификатора">
+    <div class="centered-media">
+        <img src="{{ $qrCode }}" width="240" height="240" alt="{{ __('public.account.qr_alt') }}">
     </div>
 
-    <details style="margin-bottom:22px">
-        <summary>Не получается отсканировать QR-код</summary>
-        <p>Введите этот секретный ключ вручную:</p>
-        <code style="display:block;padding:12px;overflow-wrap:anywhere;background:var(--paper);border-radius:10px">{{ $secret }}</code>
+    <details class="spaced-details">
+        <summary>{{ __('public.account.manual') }}</summary>
+        <p>{{ __('public.account.manual_text') }}</p>
+        <code class="totp-code">{{ $secret }}</code>
     </details>
 
-    @if($errors->any())<p class="error">{{ $errors->first() }}</p>@endif
-    <form method="post" action="{{ route('totp.confirm') }}">
+    @if($errors->any())<p class="error" role="alert">{{ $errors->first() }}</p>@endif
+    <form method="post" action="{{ route('totp.confirm') }}" class="form-grid">
         @csrf
-        <label>
-            <span>Код из приложения</span>
+        <label class="wide">
+            <span>{{ __('public.account.app_code') }}</span>
             <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required autofocus>
         </label>
-        <p><button class="button" type="submit">Подтвердить и подключить</button></p>
+        <div class="wide form-actions"><button class="button" type="submit">{{ __('public.account.confirm') }}</button></div>
     </form>
 </section>
 @endsection

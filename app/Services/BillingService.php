@@ -20,12 +20,29 @@ class BillingService
         $provider = (string) PlatformSetting::value('billing_provider', 'manual');
         $key = (string) Str::uuid();
 
-        return match ($provider) {
+        $response = match ($provider) {
             'stripe' => $this->stripe($tree, $plan, $user, $key),
             'yookassa' => $this->yookassa($tree, $plan, $user, $key),
             'manual' => $this->manual($tree, $plan, $user, $key),
             default => throw new RuntimeException('Неизвестный платёжный провайдер.'),
         };
+        app(AnalyticsService::class)->record(
+            'begin_checkout',
+            user: $user,
+            tree: $tree,
+            parameters: [
+                'tree_id' => $tree->id,
+                'plan_id' => $plan->id,
+                'plan_code' => $plan->code,
+                'plan_name' => $plan->name,
+                'currency' => $plan->currency,
+                'value' => (float) $plan->price_monthly,
+            ],
+            deduplicationKey: "begin_checkout:{$key}",
+            queueForBrowser: true,
+        );
+
+        return $response;
     }
 
     private function stripe(FamilyTree $tree, Plan $plan, User $user, string $key): RedirectResponse

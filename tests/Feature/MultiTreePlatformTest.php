@@ -36,6 +36,7 @@ class MultiTreePlatformTest extends TestCase
             'password_confirmation' => 'very-secret-password',
             'tree_name' => 'Семья Ивановых',
             'tree_slug' => 'ivanovy',
+            'privacy_consent' => '1',
         ])->assertRedirect('/account?welcome=1');
 
         $tree = FamilyTree::query()->where('slug', 'ivanovy')->firstOrFail();
@@ -52,6 +53,7 @@ class MultiTreePlatformTest extends TestCase
         ]);
         $this->assertFalse($tree->owner->two_factor_enabled);
         $this->assertFalse($tree->owner->two_factor_required);
+        $this->assertNotNull($tree->owner->privacy_accepted_at);
     }
 
     public function test_tree_header_strictly_isolates_people(): void

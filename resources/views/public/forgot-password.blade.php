@@ -1,14 +1,21 @@
 @extends('public.layout')
-@section('title', 'Восстановление доступа — Я и дом мой')
+
+@section('title', __('public.auth.forgot_title'))
+@section('robots', 'noindex,follow')
+
 @section('content')
-<section class="content-card">
-    <h1>Восстановление доступа</h1>
-    <p>Укажите email учётной записи. Мы отправим одноразовую ссылку.</p>
-    @if(session('status'))<p>{{ session('status') }}</p>@endif
-    <form method="post" action="{{ route('password.email') }}">@csrf
-        <label><span>Email</span><input name="email" type="email" value="{{ old('email') }}" required autofocus></label>
-        @error('email')<p class="field-error">{{ $message }}</p>@enderror
-        <p><button class="button" type="submit">Отправить ссылку</button></p>
+<section class="content-card content-card--narrow">
+    <h1>{{ __('public.auth.forgot_heading') }}</h1>
+    <p>{{ __('public.auth.forgot_text') }}</p>
+    @if(session('status'))<p class="status-message" role="status">{{ session('status') }}</p>@endif
+    <form method="post" action="{{ route('password.email') }}" class="form-grid">
+        @csrf
+        <label class="wide">
+            <span>{{ __('public.common.email') }}</span>
+            <input name="email" type="email" value="{{ old('email') }}" autocomplete="email" required autofocus>
+        </label>
+        @error('email')<p class="wide field-error" role="alert">{{ $message }}</p>@enderror
+        <div class="wide form-actions"><button class="button" type="submit">{{ __('public.auth.send_link') }}</button></div>
     </form>
 </section>
 @endsection

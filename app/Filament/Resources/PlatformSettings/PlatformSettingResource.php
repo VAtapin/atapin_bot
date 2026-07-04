@@ -38,6 +38,7 @@ class PlatformSettingResource extends Resource
                 'general' => 'Общие',
                 'mail' => 'Почта и SMTP',
                 'billing' => 'Платежи',
+                'analytics' => 'Аналитика и реклама',
             ])->disabled()->dehydrated(false),
             Select::make('type')->label('Тип')->options([
                 'string' => 'Текст',
@@ -68,6 +69,7 @@ class PlatformSettingResource extends Resource
                 ->formatStateUsing(fn (string $state): string => match ($state) {
                     'mail' => 'Почта и SMTP',
                     'billing' => 'Платежи',
+                    'analytics' => 'Аналитика и реклама',
                     default => 'Общие',
                 }),
             TextColumn::make('value')->label('Значение')
@@ -79,6 +81,7 @@ class PlatformSettingResource extends Resource
                 'general' => 'Общие',
                 'mail' => 'Почта и SMTP',
                 'billing' => 'Платежи',
+                'analytics' => 'Аналитика и реклама',
             ]),
         ])->defaultSort('sort_order')->recordActions([EditAction::make()]);
     }

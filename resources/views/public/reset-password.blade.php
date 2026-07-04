@@ -1,15 +1,19 @@
 @extends('public.layout')
-@section('title', 'Новый пароль — Я и дом мой')
+
+@section('title', __('public.auth.reset_title'))
+@section('robots', 'noindex,nofollow')
+
 @section('content')
-<section class="content-card">
-    <h1>Новый пароль</h1>
-    <form method="post" action="{{ route('password.update') }}" class="form-grid">@csrf
+<section class="content-card content-card--narrow">
+    <h1>{{ __('public.auth.reset_heading') }}</h1>
+    <form method="post" action="{{ route('password.update') }}" class="form-grid">
+        @csrf
         <input type="hidden" name="token" value="{{ $token }}">
-        <label class="wide"><span>Email</span><input name="email" type="email" value="{{ old('email', $email) }}" required></label>
-        <label><span>Новый пароль</span><input name="password" type="password" required></label>
-        <label><span>Повторите пароль</span><input name="password_confirmation" type="password" required></label>
-        @if($errors->any())<p class="wide field-error">{{ $errors->first() }}</p>@endif
-        <div class="wide"><button class="button" type="submit">Сохранить пароль</button></div>
+        <label class="wide"><span>{{ __('public.common.email') }}</span><input name="email" type="email" value="{{ old('email', $email) }}" autocomplete="email" required></label>
+        <label><span>{{ __('public.auth.new_password') }}</span><input name="password" type="password" autocomplete="new-password" required></label>
+        <label><span>{{ __('public.common.password_confirmation') }}</span><input name="password_confirmation" type="password" autocomplete="new-password" required></label>
+        @if($errors->any())<p class="wide field-error" role="alert">{{ $errors->first() }}</p>@endif
+        <div class="wide form-actions"><button class="button" type="submit">{{ __('public.auth.save_password') }}</button></div>
     </form>
 </section>
 @endsection

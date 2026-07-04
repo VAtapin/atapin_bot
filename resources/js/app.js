@@ -1,12 +1,29 @@
-import cytoscape from 'cytoscape';
-import bridge from '@vkontakte/vk-bridge';
 import { calculateFamilyTreePositions } from './family-tree-layout.js';
 import '../css/app.css';
+
+const i18n = window.familyAppI18n ?? {};
+const t = (key, replacements = {}) => {
+    const value = key.split('.').reduce((result, part) => result?.[part], i18n) ?? key;
+
+    return Object.entries(replacements).reduce(
+        (text, [name, replacement]) => String(text).replaceAll(`:${name}`, String(replacement)),
+        String(value),
+    );
+};
+const dateLocale = ({ ru: 'ru-RU', de: 'de-DE', en: 'en-US', uk: 'uk-UA' })[
+    window.familyAppConfig?.locale
+] ?? 'ru-RU';
 
 const mourningRibbonImage = `data:image/svg+xml;utf8,${encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M10 43L43 10" stroke="#171717" stroke-width="11" stroke-linecap="square"/></svg>',
 )}`;
 const telegram = window.Telegram?.WebApp;
+let cytoscapeLoader;
+const loadCytoscape = () => {
+    cytoscapeLoader ??= import('cytoscape').then((module) => module.default);
+
+    return cytoscapeLoader;
+};
 const initialParams = new URLSearchParams(window.location.search);
 const vkLaunchParams = initialParams.has('vk_user_id') && initialParams.has('sign')
     ? initialParams.toString()
@@ -91,9 +108,9 @@ try {
 }
 
 if (vkLaunchParams || window.familyAppConfig?.platform === 'vk') {
-    bridge.send('VKWebAppInit').catch(() => {
-        // В обычном браузере VK Bridge ожидаемо недоступен.
-    });
+    import('@vkontakte/vk-bridge')
+        .then(({ default: bridge }) => bridge.send('VKWebAppInit'))
+        .catch(() => {});
 }
 
 async function api(path, options = {}) {
@@ -126,9 +143,9 @@ async function api(path, options = {}) {
             ? Object.values(data.errors).flat().join(' ')
             : null;
         const serverMessage = response.status >= 500
-            ? 'Ошибка сервера. Обновите страницу или попробуйте ещё раз немного позже.'
+            ? t('server_error')
             : data.message;
-        const error = new Error(validationMessage || serverMessage || 'Не удалось загрузить данные');
+        const error = new Error(validationMessage || serverMessage || t('load_error'));
         error.status = response.status;
         error.payload = data;
         throw error;
@@ -153,7 +170,7 @@ function showError(message, payload = {}) {
 
     $('#error-message').textContent = message;
     $('#error-actions').innerHTML = payload.login_url
-        ? `<a class="telegram-login" href="${escapeHtml(payload.login_url)}">Войти через Telegram</a>`
+        ? `<a class="telegram-login" href="${escapeHtml(payload.login_url)}">${escapeHtml(t('telegram_login'))}</a>`
         : '';
     $('#error').hidden = false;
     setLoading(false);
@@ -492,11 +509,12 @@ function treeDateLabel(person) {
 
     if (birth && death) return `${birth} — ${death}`;
     if (death) return `† ${death}`;
-    if (birth) return `р. ${birth}`;
+    if (birth) return t('born', { date: birth });
     return '';
 }
 
-function renderTree(data) {
+async function renderTree(data) {
+    const cytoscape = await loadCytoscape();
     state.cytoscape?.destroy();
     $('#empty').hidden = data.people.length > 0;
 
@@ -655,14 +673,14 @@ function renderTree(data) {
 }
 
 const relationLabels = {
-    self: 'Это вы',
-    parents: 'Родитель',
-    grandparents: 'Бабушка / дедушка',
-    spouses: 'Супруг / супруга',
-    children: 'Ребёнок',
-    grandchildren: 'Внук / внучка',
-    siblings: 'Брат / сестра',
-    nephews: 'Племянник / племянница',
+    self: t('relations.self'),
+    parents: t('relations.parents'),
+    grandparents: t('relations.grandparents'),
+    spouses: t('relations.spouses'),
+    children: t('relations.children'),
+    grandchildren: t('relations.grandchildren'),
+    siblings: t('relations.siblings'),
+    nephews: t('relations.nephews'),
 };
 
 function renderList(data) {
@@ -677,7 +695,7 @@ function renderList(data) {
                 </span>
                 <span class="person-row-main">
                     <strong>${escapeHtml(person.name)}</strong>
-                    <small>${escapeHtml(relationLabels[person.relation] || person.life_years || 'Родственник')}</small>
+                    <small>${escapeHtml(relationLabels[person.relation] || person.life_years || t('relations.relative'))}</small>
                 </span>
                 <span class="person-row-date">
                     ${person.birth_date ? `<b>${escapeHtml(formatDate(person.birth_date))}</b>` : ''}
@@ -690,7 +708,7 @@ function renderList(data) {
                 <span class="person-row-chevron">›</span>
             </button>
         `).join('')
-        : '<p class="empty-list">По выбранному фильтру никого нет.</p>';
+        : `<p class="empty-list">${escapeHtml(t('empty_filter'))}</p>`;
     list.querySelectorAll('[data-person-id]').forEach((row) => {
         row.addEventListener('click', () => showPerson(row.dataset.personId));
     });
@@ -727,21 +745,21 @@ function showPerson(id) {
             <div class="person-photo person-photo--empty">${escapeHtml(person.name.slice(0, 1))}</div>
         </div>`;
     const facts = [
-        person.birth_date && ['Дата рождения', formatDate(person.birth_date, person.birth_date_precision)],
-        person.death_date && ['Дата смерти', formatDate(person.death_date, person.death_date_precision)],
-        person.life_years && ['Годы жизни', person.life_years],
-        person.maiden_name && ['Девичья фамилия', person.maiden_name],
-        person.birth_place && ['Место рождения', person.birth_place],
-        person.death_place && ['Место смерти', person.death_place],
-        person.burial_place && ['Место захоронения', person.burial_place],
-        person.city && ['Город', person.city],
-        person.address && ['Адрес', person.address],
-        person.occupation && ['Род занятий', person.occupation],
+        person.birth_date && [t('fields.birth_date'), formatDate(person.birth_date, person.birth_date_precision)],
+        person.death_date && [t('fields.death_date'), formatDate(person.death_date, person.death_date_precision)],
+        person.life_years && [t('fields.life_years'), person.life_years],
+        person.maiden_name && [t('fields.maiden_name'), person.maiden_name],
+        person.birth_place && [t('fields.birth_place'), person.birth_place],
+        person.death_place && [t('fields.death_place'), person.death_place],
+        person.burial_place && [t('fields.burial_place'), person.burial_place],
+        person.city && [t('fields.city'), person.city],
+        person.address && [t('fields.address'), person.address],
+        person.occupation && [t('fields.occupation'), person.occupation],
     ].filter(Boolean);
     const relatives = [
-        ['Родители', person.relatives?.parents],
-        ['Супруги и партнёры', person.relatives?.spouses],
-        ['Дети', person.relatives?.children],
+        [t('fields.parents'), person.relatives?.parents],
+        [t('fields.spouses'), person.relatives?.spouses],
+        [t('fields.children'), person.relatives?.children],
     ].filter(([, items]) => items?.length);
     const photos = person.photos ?? [];
 
@@ -771,7 +789,7 @@ function showPerson(id) {
         `).join('')}
         ${photos.length ? `
             <section class="person-photo-strip">
-                <h3>Фотографии</h3>
+                <h3>${escapeHtml(t('fields.photos'))}</h3>
                 <div>${photos.map((item, index) => `
                     <button type="button" data-person-photo-index="${index}">
                         <img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.title || person.name)}">
@@ -780,7 +798,7 @@ function showPerson(id) {
             </section>
         ` : ''}
         ${person.bio ? `<p class="person-bio">${escapeHtml(person.bio)}</p>` : ''}
-        <button id="person-focus" class="person-focus" type="button">Показать семейную ветвь</button>
+        <button id="person-focus" class="person-focus" type="button">${escapeHtml(t('show_branch'))}</button>
     `;
     $('#person-content').querySelectorAll('[data-relative-id]').forEach((button) => {
         button.addEventListener('click', async () => {
@@ -844,7 +862,7 @@ async function loadTree() {
     try {
         const data = await api(`/api/family/tree?${treeQuery()}`);
         if (state.treeSlug && data.tree?.slug && String(state.treeSlug) !== String(data.tree.slug)) {
-            throw new Error('Сервер вернул данные другого семейного дерева. Обновите страницу.');
+            throw new Error(t('wrong_tree'));
         }
         if (data.tree?.id) {
             state.treeId = data.tree.id;
@@ -859,15 +877,15 @@ async function loadTree() {
         const birthdayTab = document.querySelector('[data-tab="birthdays"]');
         if (birthdayTab) {
             birthdayTab.textContent = data.viewer?.unread_congratulations > 0
-                ? `Дни рождения · ${data.viewer.unread_congratulations}`
-                : 'Дни рождения';
+                ? `${t('birthdays')} · ${data.viewer.unread_congratulations}`
+                : t('birthdays');
         }
         $('#my-branch').disabled = !data.viewer?.has_person;
         $('#filters [name="relation"]').disabled = !data.viewer?.has_person;
-        if (state.activeTab === 'tree') renderTree(data);
+        if (state.activeTab === 'tree') await renderTree(data);
         renderList(data);
         fillCities(data.filters.cities);
-        $('#tree-meta').textContent = `Показано ${data.shown_people} из ${data.total_people}`;
+        $('#tree-meta').textContent = t('shown', { shown: data.shown_people, total: data.total_people });
 
         if (state.pendingOpenPersonId && state.people.has(String(state.pendingOpenPersonId))) {
             const personId = state.pendingOpenPersonId;
@@ -876,7 +894,7 @@ async function loadTree() {
         }
     } catch (error) {
         if (state.lastTreeData) {
-            $('#tree-meta').textContent = 'Не удалось обновить данные. Показана последняя загруженная версия.';
+            $('#tree-meta').textContent = t('stale');
         } else {
             showError(error.message, error.payload);
         }
@@ -888,7 +906,7 @@ async function loadTree() {
 function fillCities(cities) {
     const select = $('#city');
     const current = select.value;
-    const options = ['<option value="">Все места</option>'];
+    const options = [`<option value="">${escapeHtml(t('all_places'))}</option>`];
 
     for (const city of cities) {
         options.push(`<option value="${escapeHtml(city)}">${escapeHtml(city)}</option>`);
@@ -904,26 +922,26 @@ async function loadBirthdays() {
     try {
         const data = await api('/api/family/birthdays');
         const birthdayTab = document.querySelector('[data-tab="birthdays"]');
-        if (birthdayTab) birthdayTab.textContent = 'Дни рождения';
+        if (birthdayTab) birthdayTab.textContent = t('birthdays');
         $('#birthday-list').innerHTML = data.birthdays.length
             ? data.birthdays.map((item) => `
                 <article class="birthday-card">
                     <img src="${escapeHtml(item.photo_url)}" data-fallback="/images/person-placeholder.svg" alt="" loading="lazy">
                     <div>
                         <strong>${escapeHtml(item.name)}</strong>
-                        <span>${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))} · ${item.age} лет</span>
+                        <span>${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString(dateLocale, { day: 'numeric', month: 'long' }))} · ${escapeHtml(t('years', { count: item.age }))}</span>
                     </div>
                     <div class="birthday-side">
-                        <em>${item.days === 0 ? 'сегодня' : `через ${item.days} дн.`}</em>
+                        <em>${item.days === 0 ? escapeHtml(t('today')) : escapeHtml(t('in_days', { count: item.days }))}</em>
                         ${String(item.id) !== String(data.viewer_person_id ?? '')
-                            ? `<button class="congratulate-button" type="button" data-occasion="birthday" data-person-id="${item.id}" data-recipient="${escapeHtml(item.name)}">Поздравить</button>`
+                            ? `<button class="congratulate-button" type="button" data-occasion="birthday" data-person-id="${item.id}" data-recipient="${escapeHtml(item.name)}">${escapeHtml(t('congratulate'))}</button>`
                             : ''}
                     </div>
                 </article>
             `).join('')
-            : '<p class="empty-list">Дни рождения пока не добавлены.</p>';
+            : `<p class="empty-list">${escapeHtml(t('no_birthdays'))}</p>`;
         $('#anniversary-list').innerHTML = data.anniversaries?.length
-            ? `<h3>Годовщины</h3>${data.anniversaries.map((item) => `
+            ? `<h3>${escapeHtml(t('anniversaries'))}</h3>${data.anniversaries.map((item) => `
                 <article class="birthday-card anniversary-card">
                     <span class="couple-avatar">
                         <img src="${escapeHtml(item.partner_one.photo_url)}" data-fallback="/images/person-placeholder.svg" alt="">
@@ -931,17 +949,17 @@ async function loadBirthdays() {
                     </span>
                     <div>
                         <strong>${escapeHtml(item.title)}</strong>
-                        <span>${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))} · ${item.years} лет</span>
+                        <span>${escapeHtml(new Date(`${item.date}T12:00:00`).toLocaleDateString(dateLocale, { day: 'numeric', month: 'long' }))} · ${escapeHtml(t('years', { count: item.years }))}</span>
                     </div>
                     <div class="birthday-side">
-                        <em>${item.days === 0 ? 'сегодня' : `через ${item.days} дн.`}</em>
-                        <button class="congratulate-button" type="button" data-occasion="anniversary" data-partnership-id="${item.id}" data-recipient="${escapeHtml(item.title)}">Поздравить</button>
+                        <em>${item.days === 0 ? escapeHtml(t('today')) : escapeHtml(t('in_days', { count: item.days }))}</em>
+                        <button class="congratulate-button" type="button" data-occasion="anniversary" data-partnership-id="${item.id}" data-recipient="${escapeHtml(item.title)}">${escapeHtml(t('congratulate'))}</button>
                     </div>
                 </article>
             `).join('')}`
             : '';
         $('#congratulation-inbox').innerHTML = data.congratulations?.length
-            ? `<h3>Полученные поздравления</h3>${data.congratulations.map((item) => `
+            ? `<h3>${escapeHtml(t('received'))}</h3>${data.congratulations.map((item) => `
                 <article class="congratulation-card">
                     <strong>${escapeHtml(item.from)}</strong>
                     <p>${escapeHtml(item.message)}</p>
@@ -957,8 +975,8 @@ async function loadBirthdays() {
                 form.elements.person_id.value = button.dataset.personId ?? '';
                 form.elements.partnership_id.value = button.dataset.partnershipId ?? '';
                 form.elements.message.value = button.dataset.occasion === 'birthday'
-                    ? 'С днём рождения! Желаю здоровья, радости и семейного тепла!'
-                    : 'Поздравляю с годовщиной! Желаю любви, согласия и ещё многих счастливых лет вместе!';
+                    ? t('birthday_wish')
+                    : t('anniversary_wish');
                 $('#congratulation-recipient').textContent = button.dataset.recipient ?? '';
                 $('#congratulation-message').textContent = '';
                 $('#congratulation-modal').hidden = false;
@@ -996,7 +1014,7 @@ async function loadGallery(reset = true) {
                     </span>
                 </button>
             `).join('')
-            : (reset ? '<p class="empty-list">Фотографий пока нет.</p>' : '');
+            : (reset ? `<p class="empty-list">${escapeHtml(t('no_photos'))}</p>` : '');
         $('#gallery-grid').insertAdjacentHTML('beforeend', markup);
         $('#gallery-grid').querySelectorAll('[data-photo-id]:not([data-bound])').forEach((item) => {
             item.dataset.bound = '1';
@@ -1036,10 +1054,10 @@ function eventCards(items) {
                     ${item.place ? `<small>📍 ${escapeHtml(item.place)}</small>` : ''}
                     ${item.description ? `<p>${escapeHtml(item.description)}</p>` : ''}
                 </div>
-                ${item.annual ? '<em>ежегодно</em>' : ''}
+                ${item.annual ? `<em>${escapeHtml(t('annual'))}</em>` : ''}
             </article>
         `).join('')
-        : '<p class="empty-list">Событий пока нет.</p>';
+        : `<p class="empty-list">${escapeHtml(t('no_events'))}</p>`;
 }
 
 async function loadEvents() {
@@ -1059,7 +1077,7 @@ function showPhotoViewer(photo) {
     if (!photo) return;
 
     $('#photo-viewer-image').src = photo.url;
-    $('#photo-viewer-image').alt = photo.title || photo.person_name || 'Семейная фотография';
+    $('#photo-viewer-image').alt = photo.title || photo.person_name || t('family_photo');
     $('#photo-viewer-caption').innerHTML = `
         ${(photo.title || photo.person_name)
             ? `<strong>${escapeHtml(photo.title || photo.person_name)}</strong>`
@@ -1068,7 +1086,7 @@ function showPhotoViewer(photo) {
         ${photo.taken_at ? `<small>${escapeHtml(formatDate(photo.taken_at))}</small>` : ''}
         ${photo.person_id ? `
             <button type="button" data-viewer-person="${photo.person_id}">
-                Открыть карточку ${escapeHtml(photo.person_name || 'человека')}
+                ${escapeHtml(t('open_person', { name: photo.person_name || t('relations.relative') }))}
             </button>
         ` : ''}
     `;
@@ -1090,21 +1108,21 @@ function field(name, label, value = '', type = 'text') {
 
 function personEditFields(person) {
     return `
-        ${field('last_name', 'Фамилия', person.last_name)}
-        ${field('first_name', 'Имя', person.first_name)}
-        ${field('middle_name', 'Отчество', person.middle_name)}
-        ${field('maiden_name', 'Девичья фамилия', person.maiden_name)}
-        <label><span>Пол</span><select name="gender">
-            <option value="unknown" ${person.gender === 'unknown' ? 'selected' : ''}>Не указан</option>
-            <option value="male" ${person.gender === 'male' ? 'selected' : ''}>Мужской</option>
-            <option value="female" ${person.gender === 'female' ? 'selected' : ''}>Женский</option>
+        ${field('last_name', t('editor.last_name'), person.last_name)}
+        ${field('first_name', t('editor.first_name'), person.first_name)}
+        ${field('middle_name', t('editor.middle_name'), person.middle_name)}
+        ${field('maiden_name', t('editor.maiden_name'), person.maiden_name)}
+        <label><span>${escapeHtml(t('editor.gender'))}</span><select name="gender">
+            <option value="unknown" ${person.gender === 'unknown' ? 'selected' : ''}>${escapeHtml(t('editor.gender_unknown'))}</option>
+            <option value="male" ${person.gender === 'male' ? 'selected' : ''}>${escapeHtml(t('editor.gender_male'))}</option>
+            <option value="female" ${person.gender === 'female' ? 'selected' : ''}>${escapeHtml(t('editor.gender_female'))}</option>
         </select></label>
-        ${field('birth_date', 'Дата рождения', person.birth_date, 'date')}
-        ${field('death_date', 'Дата смерти', person.death_date, 'date')}
-        ${field('birth_place', 'Место рождения', person.birth_place)}
-        ${field('current_city', 'Город проживания', person.current_city)}
-        ${field('occupation', 'Род занятий', person.occupation)}
-        <label class="wide"><span>Биография</span><textarea name="bio">${escapeHtml(person.bio ?? '')}</textarea></label>
+        ${field('birth_date', t('fields.birth_date'), person.birth_date, 'date')}
+        ${field('death_date', t('fields.death_date'), person.death_date, 'date')}
+        ${field('birth_place', t('fields.birth_place'), person.birth_place)}
+        ${field('current_city', t('editor.current_city'), person.current_city)}
+        ${field('occupation', t('fields.occupation'), person.occupation)}
+        <label class="wide"><span>${escapeHtml(t('editor.biography'))}</span><textarea name="bio">${escapeHtml(person.bio ?? '')}</textarea></label>
     `;
 }
 
@@ -1118,27 +1136,27 @@ function formObject(form) {
 function renderMe(data) {
     const person = data.person;
     const relatives = [
-        ...data.relatives.spouses.map((item) => ({ ...item, kind: 'Супруг / супруга' })),
-        ...data.relatives.children.map((item) => ({ ...item, kind: 'Ребёнок' })),
-        ...data.relatives.grandchildren.map((item) => ({ ...item, kind: 'Внук / внучка' })),
-        ...data.relatives.child_spouses.map((item) => ({ ...item, kind: 'Зять / невестка' })),
+        ...data.relatives.spouses.map((item) => ({ ...item, kind: t('editor.spouse') })),
+        ...data.relatives.children.map((item) => ({ ...item, kind: t('editor.child') })),
+        ...data.relatives.grandchildren.map((item) => ({ ...item, kind: t('editor.grandchild') })),
+        ...data.relatives.child_spouses.map((item) => ({ ...item, kind: t('editor.child_spouse') })),
     ];
 
     $('#me-content').innerHTML = `
-        ${data.can_edit ? '' : '<div class="manage-card readonly-notice">У вас гостевой доступ. Данные доступны только для просмотра.</div>'}
+        ${data.can_edit ? '' : `<div class="manage-card readonly-notice">${escapeHtml(t('editor.readonly'))}</div>`}
         <section class="manage-card">
             <div class="manage-heading">
                 ${person.photo_url ? `<img src="${escapeHtml(person.photo_url)}" alt="">` : '<span>👤</span>'}
-                <div><h2>${escapeHtml(person.name)}</h2><p>Ваша карточка в семейном архиве</p></div>
+                <div><h2>${escapeHtml(person.name)}</h2><p>${escapeHtml(t('editor.your_profile'))}</p></div>
             </div>
             <form id="profile-form" class="manage-form">
                 ${personEditFields(person)}
-                <button type="submit">Сохранить мои данные</button>
+                <button type="submit">${escapeHtml(t('editor.save_profile'))}</button>
             </form>
         </section>
 
         <section class="manage-card">
-            <h2>Моя семейная ветвь</h2>
+            <h2>${escapeHtml(t('editor.my_branch'))}</h2>
             <div class="relative-editor-list">
                 ${relatives.length ? relatives.map((relative) => `
                     <details data-relative="${relative.id}">
@@ -1149,87 +1167,87 @@ function renderMe(data) {
                         <form class="manage-form relative-form">
                             ${personEditFields(relative)}
                             <div class="form-actions">
-                                <button type="submit">Сохранить</button>
-                                <button type="button" class="danger unlink-relative">Удалить связь</button>
+                                <button type="submit">${escapeHtml(t('editor.save'))}</button>
+                                <button type="button" class="danger unlink-relative">${escapeHtml(t('editor.unlink'))}</button>
                             </div>
                         </form>
                     </details>
-                `).join('') : '<p class="empty-list">Пока никого не добавлено.</p>'}
+                `).join('') : `<p class="empty-list">${escapeHtml(t('editor.empty_relatives'))}</p>`}
             </div>
             <details class="add-box">
-                <summary>＋ Добавить родственника</summary>
+                <summary>＋ ${escapeHtml(t('editor.add_relative'))}</summary>
                 <form id="relative-add-form" class="manage-form">
-                    <label><span>Кого добавляем</span><select name="kind">
-                        <option value="spouse">Супруга / супругу</option>
-                        <option value="child">Ребёнка</option>
-                        <option value="grandchild">Внука / внучку</option>
-                        <option value="child_spouse">Зятя / невестку</option>
+                    <label><span>${escapeHtml(t('editor.relative_kind'))}</span><select name="kind">
+                        <option value="spouse">${escapeHtml(t('editor.add_spouse'))}</option>
+                        <option value="child">${escapeHtml(t('editor.add_child'))}</option>
+                        <option value="grandchild">${escapeHtml(t('editor.add_grandchild'))}</option>
+                        <option value="child_spouse">${escapeHtml(t('editor.add_child_spouse'))}</option>
                     </select></label>
-                    <label><span>Через кого из детей (для внука, зятя или невестки)</span><select name="related_person_id">
-                        <option value="">Не требуется</option>
+                    <label><span>${escapeHtml(t('editor.through_child'))}</span><select name="related_person_id">
+                        <option value="">${escapeHtml(t('editor.not_required'))}</option>
                         ${data.relatives.children.map((child) => `<option value="${child.id}">${escapeHtml(child.name)}</option>`).join('')}
                     </select></label>
                     ${personEditFields({ gender: 'unknown' })}
-                    <button type="submit">Добавить в дерево</button>
+                    <button type="submit">${escapeHtml(t('editor.add_tree'))}</button>
                 </form>
             </details>
         </section>
 
         <section class="manage-card">
-            <h2>Фотоальбомы</h2>
+            <h2>${escapeHtml(t('editor.albums'))}</h2>
             <div class="album-list">
                 ${data.albums.map((album) => `
                     <span>${escapeHtml(album.title)} · ${album.photos_count}
-                        <button type="button" data-delete-album="${album.id}" aria-label="Удалить">×</button>
+                        <button type="button" data-delete-album="${album.id}" aria-label="${escapeHtml(t('editor.delete'))}">×</button>
                     </span>
-                `).join('') || '<p class="empty-list">Альбомов пока нет.</p>'}
+                `).join('') || `<p class="empty-list">${escapeHtml(t('editor.no_albums'))}</p>`}
             </div>
             <form id="album-form" class="inline-form">
-                <input name="title" placeholder="Название нового альбома" required>
-                <button type="submit">Создать</button>
+                <input name="title" placeholder="${escapeHtml(t('editor.album_title'))}" required>
+                <button type="submit">${escapeHtml(t('editor.create'))}</button>
             </form>
         </section>
 
         <section class="manage-card">
-            <h2>Мои фотографии</h2>
+            <h2>${escapeHtml(t('editor.my_photos'))}</h2>
             <form id="photo-form" class="photo-upload-form">
                 <input name="photo" type="file" accept="image/*" required>
-                <input name="title" placeholder="Подпись к фотографии">
+                <input name="title" placeholder="${escapeHtml(t('editor.photo_caption'))}">
                 <select name="photo_album_id">
-                    <option value="">Без альбома</option>
+                    <option value="">${escapeHtml(t('editor.no_album'))}</option>
                     ${data.albums.map((album) => `<option value="${album.id}">${escapeHtml(album.title)}</option>`).join('')}
                 </select>
-                <label class="check"><input name="is_primary" type="checkbox" value="1"> Сделать основной</label>
-                <button type="submit">Загрузить фотографию</button>
+                <label class="check"><input name="is_primary" type="checkbox" value="1"> ${escapeHtml(t('editor.make_primary'))}</label>
+                <button type="submit">${escapeHtml(t('editor.upload'))}</button>
             </form>
             <div class="my-photo-grid">
                 ${data.photos.map((photo) => `
                     <figure>
                         <img src="${escapeHtml(photo.url)}" alt="">
-                        ${photo.is_primary ? '<b>Основная</b>' : ''}
-                        <button type="button" data-delete-photo="${photo.id}" aria-label="Удалить">×</button>
+                        ${photo.is_primary ? `<b>${escapeHtml(t('editor.primary'))}</b>` : ''}
+                        <button type="button" data-delete-photo="${photo.id}" aria-label="${escapeHtml(t('editor.delete'))}">×</button>
                     </figure>
-                `).join('') || '<p class="empty-list">Загрузите первую фотографию.</p>'}
+                `).join('') || `<p class="empty-list">${escapeHtml(t('editor.first_photo'))}</p>`}
             </div>
         </section>
 
         <details class="manage-card danger-zone">
-            <summary>Удаление моей карточки</summary>
-            <p>Карточка будет скрыта, а привязка Telegram снята. Введите слово «УДАЛИТЬ».</p>
+            <summary>${escapeHtml(t('editor.delete_profile'))}</summary>
+            <p>${escapeHtml(t('editor.delete_profile_text'))}</p>
             <form id="delete-me-form" class="inline-form">
                 <input name="confirmation" required>
-                <button class="danger" type="submit">Удалить мою карточку</button>
+                <button class="danger" type="submit">${escapeHtml(t('editor.delete_profile_button'))}</button>
             </form>
         </details>
         <details class="manage-card privacy-zone">
-            <summary>Мои персональные данные</summary>
-            <p>Можно скачать все данные своей учётной записи или полностью удалить аккаунт.</p>
+            <summary>${escapeHtml(t('editor.personal_data'))}</summary>
+            <p>${escapeHtml(t('editor.personal_data_text'))}</p>
             <div class="form-actions">
-                <button id="privacy-export" type="button">Скачать мои данные</button>
+                <button id="privacy-export" type="button">${escapeHtml(t('editor.download_data'))}</button>
             </div>
             <form id="delete-account-form" class="inline-form">
-                <input name="confirmation" placeholder="УДАЛИТЬ АККАУНТ" required>
-                <button class="danger" type="submit">Удалить аккаунт</button>
+                <input name="confirmation" placeholder="${escapeHtml(t('editor.delete_account_placeholder'))}" required>
+                <button class="danger" type="submit">${escapeHtml(t('editor.delete_account'))}</button>
             </form>
         </details>
         <p id="manage-message" class="manage-message"></p>
@@ -1320,7 +1338,7 @@ function bindManageActions() {
             }
         });
         form.querySelector('.unlink-relative').addEventListener('click', async () => {
-            if (!confirm('Удалить семейную связь? Карточка человека останется в архиве.')) return;
+            if (!confirm(t('editor.confirm_unlink'))) return;
             try {
                 await api(`/api/family/me/relatives/${personId}`, { method: 'DELETE' });
                 await loadMe();
@@ -1358,7 +1376,7 @@ function bindManageActions() {
 
     document.querySelectorAll('[data-delete-album]').forEach((button) => {
         button.addEventListener('click', async () => {
-            if (!confirm('Удалить альбом? Фотографии останутся.')) return;
+            if (!confirm(t('editor.confirm_album'))) return;
             try {
                 await api(`/api/family/me/albums/${button.dataset.deleteAlbum}`, { method: 'DELETE' });
                 await loadMe();
@@ -1380,7 +1398,7 @@ function bindManageActions() {
 
     document.querySelectorAll('[data-delete-photo]').forEach((button) => {
         button.addEventListener('click', async () => {
-            if (!confirm('Удалить фотографию?')) return;
+            if (!confirm(t('editor.confirm_photo'))) return;
             try {
                 await api(`/api/family/me/photos/${button.dataset.deletePhoto}`, { method: 'DELETE' });
                 await loadMe();
@@ -1392,7 +1410,7 @@ function bindManageActions() {
 
     $('#delete-me-form')?.addEventListener('submit', async (event) => {
         event.preventDefault();
-        if (!confirm('Это действие действительно удалит вашу карточку. Продолжить?')) return;
+        if (!confirm(t('editor.confirm_profile'))) return;
         try {
             await api('/api/family/me', { method: 'DELETE', body: formObject(event.currentTarget) });
             window.location.reload();
@@ -1554,8 +1572,8 @@ $('#congratulation-form').addEventListener('submit', async (event) => {
         });
         const telegramDelivered = result.deliveries?.filter((item) => item.telegram === 'delivered').length ?? 0;
         $('#congratulation-message').textContent = telegramDelivered
-            ? `Сохранено на сайте и отправлено в Telegram: ${telegramDelivered}.`
-            : 'Сохранено на семейном сайте. Telegram у получателя не подключён или недоступен.';
+            ? t('sent_telegram', { count: telegramDelivered })
+            : t('saved_site');
         setTimeout(() => { $('#congratulation-modal').hidden = true; }, 1800);
     } catch (error) {
         $('#congratulation-message').textContent = error.message;
@@ -1568,7 +1586,7 @@ $('#report-issue-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
     const message = $('#report-issue-message');
-    message.textContent = 'Отправляем…';
+    message.textContent = t('sending');
 
     try {
         const result = await api('/api/family/issues', {

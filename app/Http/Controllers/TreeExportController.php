@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FamilyTree;
+use App\Services\AnalyticsService;
 use App\Services\TreeArchiveService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -16,6 +17,13 @@ class TreeExportController extends Controller
     ): StreamedResponse {
         abort_unless($request->user()?->ownsTree($tree), 403);
         $payload = $archive->export($tree);
+        app(AnalyticsService::class)->record(
+            'tree_exported',
+            $request,
+            $request->user(),
+            $tree,
+            ['tree_id' => $tree->id],
+        );
 
         return response()->streamDownload(
             fn () => print json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),

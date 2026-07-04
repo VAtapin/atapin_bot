@@ -1,63 +1,80 @@
 @extends('public.layout')
 
-@section('title', 'Способы входа — Я и дом мой')
+@section('title', __('public.account.title'))
+@section('robots', 'noindex,nofollow')
 
 @section('content')
 <section class="content-card">
-    <h1>Безопасность и способы входа</h1>
+    <h1>{{ __('public.account.heading') }}</h1>
+
     @if(request()->boolean('welcome'))
-        <article style="margin-bottom:22px;padding:18px;border:2px solid var(--green);border-radius:14px">
-            <strong>Дерево создано. Хотите дополнительно защитить аккаунт?</strong>
-            <p>Подключение приложения-аутентификатора необязательно и займёт около минуты.</p>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-                <a class="button" href="{{ route('totp.setup') }}">Подключить сейчас</a>
-                <a class="button secondary" href="{{ route('trees.choose') }}">Позже — перейти к дереву</a>
+        <article class="notice-card notice-card--accent">
+            <strong>{{ __('public.account.welcome_title') }}</strong>
+            <p>{{ __('public.account.welcome_text') }}</p>
+            <div class="inline-actions">
+                <a class="button" href="{{ route('totp.setup') }}">{{ __('public.account.connect_now') }}</a>
+                <a class="button secondary" href="{{ route('trees.choose') }}">{{ __('public.account.later_tree') }}</a>
             </div>
         </article>
     @endif
-    <p>Все мессенджеры подключаются к одной учётной записи. Так один человек не появится в системе несколько раз.</p>
-    @if(session('status'))<p style="color:#2f6c3d">{{ session('status') }}</p>@endif
-    <div style="display:grid;gap:10px">
-        <article style="padding:14px;border:1px solid var(--line);border-radius:12px">
-            <strong>Email и пароль</strong><br><small>{{ $user->email }}</small>
+
+    <p>{{ __('public.account.identities_text') }}</p>
+    @if(session('status'))<p class="status-message" role="status">{{ session('status') }}</p>@endif
+
+    <div class="card-stack">
+        <article class="identity-card">
+            <div><strong>{{ __('public.account.email_password') }}</strong><br><small>{{ $user->email }}</small></div>
         </article>
         @foreach($user->externalIdentities as $identity)
-            <article style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border:1px solid var(--line);border-radius:12px">
-                <div><strong>{{ ucfirst($identity->provider) }}</strong><br><small>{{ $identity->username ? '@'.$identity->username : $identity->provider_user_id }} · последний вход {{ $identity->last_login_at?->format('d.m.Y H:i') ?: 'неизвестно' }}</small></div>
-                <form method="post" action="{{ route('account.identities.unlink', $identity) }}">@csrf @method('delete')<button class="button secondary" type="submit">Отключить</button></form>
+            <article class="identity-card">
+                <div>
+                    <strong>{{ ucfirst($identity->provider) }}</strong><br>
+                    <small>
+                        {{ $identity->username ? '@'.$identity->username : $identity->provider_user_id }}
+                        · {{ __('public.account.last_login', ['date' => $identity->last_login_at?->format('d.m.Y H:i') ?: __('public.account.unknown')]) }}
+                    </small>
+                </div>
+                <form method="post" action="{{ route('account.identities.unlink', $identity) }}">
+                    @csrf
+                    @method('delete')
+                    <button class="button secondary" type="submit">{{ __('public.account.disconnect') }}</button>
+                </form>
             </article>
         @endforeach
     </div>
+
     @unless($user->externalIdentities->contains('provider', 'telegram'))
-        <form method="post" action="{{ route('account.telegram.connect') }}" style="margin-top:16px">
+        <form method="post" action="{{ route('account.telegram.connect') }}">
             @csrf
-            <button class="button" type="submit">Подключить Telegram через бота</button>
+            <p><button class="button" type="submit">{{ __('public.account.connect_telegram') }}</button></p>
         </form>
     @endunless
-    <article style="margin-top:22px;padding:18px;border:1px solid var(--line);border-radius:12px">
-        <strong>Приложение-аутентификатор</strong>
+
+    <article class="settings-card">
+        <strong>{{ __('public.account.totp') }}</strong>
         @if($user->two_factor_confirmed_at)
-            <p style="color:#2f6c3d">Подключено {{ $user->two_factor_confirmed_at->format('d.m.Y H:i') }}. Поддерживаются Яндекс ID, 2FAS, Aegis, Microsoft Authenticator и другие приложения TOTP.</p>
+            <p class="success">{{ __('public.account.connected', ['date' => $user->two_factor_confirmed_at->format('d.m.Y H:i')]) }}</p>
             @if($user->two_factor_required)
-                <p><strong>Двухфакторная защита обязательна для этой учётной записи.</strong></p>
+                <p><strong>{{ __('public.account.required') }}</strong></p>
             @endif
-            <p><a class="button secondary" href="{{ route('totp.setup') }}">Подключить заново</a></p>
+            <p><a class="button secondary" href="{{ route('totp.setup') }}">{{ __('public.account.reconnect') }}</a></p>
             @unless($user->is_super_admin || $user->two_factor_required)
-                <form method="post" action="{{ route('totp.destroy') }}" style="display:grid;gap:8px;max-width:360px">
+                <form class="compact-form" method="post" action="{{ route('totp.destroy') }}">
                     @csrf
                     @method('delete')
-                    <label><span>Код для отключения</span><input name="code" inputmode="numeric" maxlength="6" required></label>
-                    <button class="button secondary" type="submit">Отключить приложение</button>
+                    <label><span>{{ __('public.account.disable_code') }}</span><input name="code" inputmode="numeric" maxlength="6" required></label>
+                    <button class="button secondary" type="submit">{{ __('public.account.disable') }}</button>
                 </form>
             @endunless
         @else
-            <p>Получайте одноразовые коды без email, Telegram и подключения телефона к интернету.</p>
+            <p>{{ __('public.account.totp_text') }}</p>
             @if($user->two_factor_required)
-                <p><strong>Администратор сделал двухфакторную защиту обязательной.</strong></p>
+                <p><strong>{{ __('public.account.admin_required') }}</strong></p>
             @endif
-            <a class="button" href="{{ route('totp.setup') }}">Подключить приложение</a>
+            <a class="button" href="{{ route('totp.setup') }}">{{ __('public.account.connect_app') }}</a>
         @endif
     </article>
-    <p style="color:var(--muted)">VK, OK и MAX будут подключаться здесь же после выдачи приложению соответствующих ключей.</p>
+
+    <p class="muted">{{ __('public.account.future_providers') }}</p>
 </section>
 @endsection

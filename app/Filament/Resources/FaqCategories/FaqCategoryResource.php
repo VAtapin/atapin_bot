@@ -9,6 +9,7 @@ use App\Models\FaqCategory;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -19,6 +20,7 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Unique;
 use UnitEnum;
 
 class FaqCategoryResource extends Resource
@@ -38,6 +40,11 @@ class FaqCategoryResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
+            Select::make('locale')
+                ->label('Язык')
+                ->options(['ru' => 'Русский', 'de' => 'Deutsch', 'en' => 'English', 'uk' => 'Українська'])
+                ->default('ru')
+                ->required(),
             TextInput::make('title')
                 ->label('Название раздела')
                 ->required()
@@ -46,7 +53,10 @@ class FaqCategoryResource extends Resource
             TextInput::make('slug')
                 ->label('Адрес раздела')
                 ->required()
-                ->unique(ignoreRecord: true),
+                ->unique(
+                    ignoreRecord: true,
+                    modifyRuleUsing: fn (Unique $rule, callable $get) => $rule->where('locale', $get('locale')),
+                ),
             Textarea::make('description')
                 ->label('Короткое описание')
                 ->rows(3)
@@ -62,6 +72,7 @@ class FaqCategoryResource extends Resource
             ->columns([
                 TextColumn::make('title')->label('Раздел')->searchable()->sortable(),
                 TextColumn::make('slug')->label('Адрес')->searchable(),
+                TextColumn::make('locale')->label('Язык')->badge(),
                 TextColumn::make('items_count')->counts('items')->label('Вопросов'),
                 TextColumn::make('sort_order')->label('Порядок')->sortable(),
                 IconColumn::make('is_published')->label('Опубликован')->boolean(),

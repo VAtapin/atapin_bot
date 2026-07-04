@@ -12,7 +12,9 @@ use App\Models\Partnership;
 use App\Models\Person;
 use App\Models\PersonPhoto;
 use App\Models\PhotoAlbum;
+use App\Models\Subscription;
 use App\Models\TelegramUser;
+use App\Models\TreeInvitation;
 use App\Models\TreeMembership;
 use App\Observers\ChangeLogObserver;
 use App\Observers\CmsPageObserver;
@@ -20,7 +22,10 @@ use App\Observers\DataIssueObserver;
 use App\Observers\FamilyCacheObserver;
 use App\Observers\PersonObserver;
 use App\Observers\PersonPhotoObserver;
+use App\Observers\PhotoAlbumObserver;
+use App\Observers\SubscriptionAnalyticsObserver;
 use App\Observers\TelegramUserObserver;
+use App\Observers\TreeInvitationAnalyticsObserver;
 use App\Observers\TreeMembershipObserver;
 use App\Services\PlatformMailConfigurator;
 use App\Support\CurrentTree;
@@ -57,6 +62,9 @@ class AppServiceProvider extends ServiceProvider
         CmsPage::observe(CmsPageObserver::class);
         Person::observe(PersonObserver::class);
         PersonPhoto::observe(PersonPhotoObserver::class);
+        PhotoAlbum::observe(PhotoAlbumObserver::class);
+        TreeInvitation::observe(TreeInvitationAnalyticsObserver::class);
+        Subscription::observe(SubscriptionAnalyticsObserver::class);
         foreach ([
             Person::class,
             PersonPhoto::class,

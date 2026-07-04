@@ -24,7 +24,7 @@ class PasswordResetController extends Controller
         $request->validate(['email' => ['required', 'email']]);
         Password::sendResetLink($request->only('email'));
 
-        return back()->with('status', 'Если этот email зарегистрирован, мы отправили ссылку для восстановления.');
+        return back()->with('status', __('public.messages.password_mail'));
     }
 
     public function reset(Request $request, string $token): View
@@ -48,7 +48,7 @@ class PasswordResetController extends Controller
         });
 
         return $status === Password::PASSWORD_RESET
-            ? redirect()->route('login')->with('status', 'Пароль изменён. Теперь можно войти.')
-            : back()->withErrors(['email' => 'Ссылка недействительна или устарела.']);
+            ? redirect()->route('login')->with('status', __('public.messages.password_changed'))
+            : back()->withErrors(['email' => __('public.messages.password_link_invalid')]);
     }
 }

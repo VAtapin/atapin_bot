@@ -11,3 +11,5 @@ if (root && canvas) {
         errorCorrectionLevel: 'M',
     });
 }
+
+document.querySelector('[data-print]')?.addEventListener('click', () => window.print());

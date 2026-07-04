@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AnalyticsEventController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\FamilyAuthController;
 use App\Http\Controllers\FaqController;
@@ -10,9 +11,12 @@ use App\Http\Controllers\LeaveTreeManagementController;
 use App\Http\Controllers\MediaController;
 use App\Http\Controllers\MiniAppController;
 use App\Http\Controllers\PasswordResetController;
+use App\Http\Controllers\PendingAnalyticsEventsController;
+use App\Http\Controllers\PrivacyConsentController;
 use App\Http\Controllers\PublicAuthController;
 use App\Http\Controllers\PublicSiteController;
 use App\Http\Controllers\RegistrationController;
+use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\TelegramAccountLinkController;
 use App\Http\Controllers\TelegramLinkLoginController;
 use App\Http\Controllers\TelegramLoginController;
@@ -27,9 +31,16 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicSiteController::class, 'home'])->name('home');
+Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
+Route::post('/analytics/events', AnalyticsEventController::class)
+    ->middleware('throttle:120,1')
+    ->name('analytics.event');
+Route::get('/analytics/pending', PendingAnalyticsEventsController::class)
+    ->middleware(['auth', 'throttle:30,1'])
+    ->name('analytics.pending');
 Route::get('/faq', FaqController::class)->name('faq');
-Route::get('/page/{page:slug}', [PublicSiteController::class, 'page'])->name('public.page');
-Route::get('/page/{page:slug}/preview', [PublicSiteController::class, 'preview'])
+Route::get('/page/{slug}', [PublicSiteController::class, 'page'])->name('public.page');
+Route::get('/page/{slug}/preview', [PublicSiteController::class, 'preview'])
     ->middleware('auth')
     ->name('public.page.preview');
 Route::get('/register', [RegistrationController::class, 'create'])->name('register');
@@ -45,6 +56,8 @@ Route::post('/forgot-password', [PasswordResetController::class, 'email'])
 Route::get('/reset-password/{token}', [PasswordResetController::class, 'reset'])->name('password.reset');
 Route::post('/reset-password', [PasswordResetController::class, 'update'])->name('password.update');
 Route::post('/logout', [PublicAuthController::class, 'destroy'])->name('logout');
+Route::get('/privacy-consent', [PrivacyConsentController::class, 'show'])->middleware('auth')->name('privacy-consent.show');
+Route::post('/privacy-consent', [PrivacyConsentController::class, 'store'])->middleware(['auth', 'throttle:10,1'])->name('privacy-consent.store');
 Route::get('/trees', TreeChooserController::class)->middleware('auth')->name('trees.choose');
 Route::get('/help', HelpController::class)->middleware('auth')->name('help');
 Route::get('/account', [AccountController::class, 'show'])->middleware('auth')->name('account');

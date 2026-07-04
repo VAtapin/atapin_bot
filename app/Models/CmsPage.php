@@ -13,6 +13,7 @@ class CmsPage extends Model
         'title',
         'meta_title',
         'meta_description',
+        'og_image_path',
         'content',
         'status',
         'is_published',

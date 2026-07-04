@@ -9,6 +9,7 @@ use App\Models\CmsPage;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -18,6 +19,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Validation\Rules\Unique;
 
 class CmsPageResource extends Resource
 {
@@ -34,11 +36,25 @@ class CmsPageResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            Select::make('locale')->label('Язык')->options(['ru' => 'Русский', 'de' => 'Deutsch', 'en' => 'English'])->required(),
-            TextInput::make('slug')->label('Адрес')->required()->unique(ignoreRecord: true),
+            Select::make('locale')->label('Язык')->options(['ru' => 'Русский', 'de' => 'Deutsch', 'en' => 'English', 'uk' => 'Українська'])->required(),
+            TextInput::make('slug')
+                ->label('Адрес')
+                ->required()
+                ->unique(
+                    ignoreRecord: true,
+                    modifyRuleUsing: fn (Unique $rule, callable $get) => $rule->where('locale', $get('locale')),
+                ),
             TextInput::make('title')->label('Заголовок')->required(),
             TextInput::make('meta_title')->label('SEO-заголовок'),
             Textarea::make('meta_description')->label('SEO-описание')->rows(2),
+            FileUpload::make('og_image_path')
+                ->label('Изображение OpenGraph')
+                ->image()
+                ->disk('public')
+                ->directory('cms/og')
+                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
+                ->maxSize(5120)
+                ->helperText('Рекомендуемый размер 1200×630. Если не указано, используется общее изображение сайта.'),
             RichEditor::make('content')
                 ->label('Содержимое')
                 ->helperText('Можно использовать заголовки, списки, ссылки, цитаты и изображения. Опасный HTML удаляется автоматически.')
