@@ -9,78 +9,108 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table): void {
-            $table->timestamp('privacy_accepted_at')->nullable()->after('remember_token');
-            $table->string('privacy_policy_version', 30)->nullable()->after('privacy_accepted_at');
-            $table->string('privacy_ip_hash', 64)->nullable()->after('privacy_policy_version');
-        });
+        if (! Schema::hasColumn('users', 'privacy_accepted_at')) {
+            Schema::table('users', function (Blueprint $table): void {
+                $table->dateTime('privacy_accepted_at')->nullable()->after('remember_token');
+            });
+        }
+        if (! Schema::hasColumn('users', 'privacy_policy_version')) {
+            Schema::table('users', function (Blueprint $table): void {
+                $table->string('privacy_policy_version', 30)->nullable()->after('privacy_accepted_at');
+            });
+        }
+        if (! Schema::hasColumn('users', 'privacy_ip_hash')) {
+            Schema::table('users', function (Blueprint $table): void {
+                $table->string('privacy_ip_hash', 64)->nullable()->after('privacy_policy_version');
+            });
+        }
 
-        Schema::table('cms_pages', function (Blueprint $table): void {
-            $table->string('og_image_path')->nullable()->after('meta_description');
-        });
+        if (! Schema::hasColumn('cms_pages', 'og_image_path')) {
+            Schema::table('cms_pages', function (Blueprint $table): void {
+                $table->string('og_image_path')->nullable()->after('meta_description');
+            });
+        }
 
-        Schema::table('faq_categories', function (Blueprint $table): void {
-            $table->string('locale', 10)->default('ru')->after('id');
-            $table->dropUnique('faq_categories_slug_unique');
-            $table->unique(['locale', 'slug']);
-            $table->index(['locale', 'is_published']);
-        });
+        if (! Schema::hasColumn('faq_categories', 'locale')) {
+            Schema::table('faq_categories', function (Blueprint $table): void {
+                $table->string('locale', 10)->default('ru')->after('id');
+            });
+        }
+        if (Schema::hasIndex('faq_categories', 'faq_categories_slug_unique')) {
+            Schema::table('faq_categories', function (Blueprint $table): void {
+                $table->dropUnique('faq_categories_slug_unique');
+            });
+        }
+        if (! Schema::hasIndex('faq_categories', ['locale', 'slug'], 'unique')) {
+            Schema::table('faq_categories', function (Blueprint $table): void {
+                $table->unique(['locale', 'slug']);
+            });
+        }
+        if (! Schema::hasIndex('faq_categories', ['locale', 'is_published'])) {
+            Schema::table('faq_categories', function (Blueprint $table): void {
+                $table->index(['locale', 'is_published']);
+            });
+        }
 
-        Schema::create('traffic_attributions', function (Blueprint $table): void {
-            $table->id();
-            $table->uuid('visitor_id')->unique();
-            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
-            $table->string('utm_source')->nullable();
-            $table->string('utm_medium')->nullable();
-            $table->string('utm_campaign')->nullable();
-            $table->string('utm_content')->nullable();
-            $table->string('utm_term')->nullable();
-            $table->text('referrer')->nullable();
-            $table->text('landing_page')->nullable();
-            $table->timestamp('first_seen_at');
-            $table->string('last_utm_source')->nullable();
-            $table->string('last_utm_medium')->nullable();
-            $table->string('last_utm_campaign')->nullable();
-            $table->string('last_utm_content')->nullable();
-            $table->string('last_utm_term')->nullable();
-            $table->text('last_referrer')->nullable();
-            $table->text('last_landing_page')->nullable();
-            $table->timestamp('last_seen_at');
-            $table->timestamps();
-            $table->index(['user_id', 'first_seen_at']);
-            $table->index(['utm_source', 'utm_campaign']);
-        });
+        if (! Schema::hasTable('traffic_attributions')) {
+            Schema::create('traffic_attributions', function (Blueprint $table): void {
+                $table->id();
+                $table->uuid('visitor_id')->unique();
+                $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+                $table->string('utm_source')->nullable();
+                $table->string('utm_medium')->nullable();
+                $table->string('utm_campaign')->nullable();
+                $table->string('utm_content')->nullable();
+                $table->string('utm_term')->nullable();
+                $table->text('referrer')->nullable();
+                $table->text('landing_page')->nullable();
+                $table->dateTime('first_seen_at');
+                $table->string('last_utm_source')->nullable();
+                $table->string('last_utm_medium')->nullable();
+                $table->string('last_utm_campaign')->nullable();
+                $table->string('last_utm_content')->nullable();
+                $table->string('last_utm_term')->nullable();
+                $table->text('last_referrer')->nullable();
+                $table->text('last_landing_page')->nullable();
+                $table->dateTime('last_seen_at');
+                $table->timestamps();
+                $table->index(['user_id', 'first_seen_at']);
+                $table->index(['utm_source', 'utm_campaign']);
+            });
+        }
 
-        Schema::create('analytics_events', function (Blueprint $table): void {
-            $table->id();
-            $table->uuid('event_uuid')->unique();
-            $table->string('event_name', 80)->index();
-            $table->string('deduplication_key', 190)->nullable()->unique();
-            $table->uuid('visitor_id')->nullable()->index();
-            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('tree_id')->nullable()->constrained('family_trees')->nullOnDelete();
-            $table->foreignId('plan_id')->nullable()->constrained('plans')->nullOnDelete();
-            $table->string('platform', 20)->default('web')->index();
-            $table->text('landing_page')->nullable();
-            $table->text('referrer')->nullable();
-            $table->string('utm_source')->nullable()->index();
-            $table->string('utm_medium')->nullable();
-            $table->string('utm_campaign')->nullable()->index();
-            $table->string('utm_content')->nullable();
-            $table->string('utm_term')->nullable();
-            $table->string('user_agent', 500)->nullable();
-            $table->string('ip_hash', 64)->nullable();
-            $table->decimal('value', 12, 2)->nullable();
-            $table->string('currency', 3)->nullable();
-            $table->json('parameters')->nullable();
-            $table->boolean('external_pending')->default(false)->index();
-            $table->timestamp('external_dispatched_at')->nullable();
-            $table->timestamp('occurred_at')->index();
-            $table->timestamps();
-            $table->index(['event_name', 'occurred_at']);
-            $table->index(['tree_id', 'event_name']);
-            $table->index(['user_id', 'event_name']);
-        });
+        if (! Schema::hasTable('analytics_events')) {
+            Schema::create('analytics_events', function (Blueprint $table): void {
+                $table->id();
+                $table->uuid('event_uuid')->unique();
+                $table->string('event_name', 80)->index();
+                $table->string('deduplication_key', 190)->nullable()->unique();
+                $table->uuid('visitor_id')->nullable()->index();
+                $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+                $table->foreignId('tree_id')->nullable()->constrained('family_trees')->nullOnDelete();
+                $table->foreignId('plan_id')->nullable()->constrained('plans')->nullOnDelete();
+                $table->string('platform', 20)->default('web')->index();
+                $table->text('landing_page')->nullable();
+                $table->text('referrer')->nullable();
+                $table->string('utm_source')->nullable()->index();
+                $table->string('utm_medium')->nullable();
+                $table->string('utm_campaign')->nullable()->index();
+                $table->string('utm_content')->nullable();
+                $table->string('utm_term')->nullable();
+                $table->string('user_agent', 500)->nullable();
+                $table->string('ip_hash', 64)->nullable();
+                $table->decimal('value', 12, 2)->nullable();
+                $table->string('currency', 3)->nullable();
+                $table->json('parameters')->nullable();
+                $table->boolean('external_pending')->default(false)->index();
+                $table->timestamp('external_dispatched_at')->nullable();
+                $table->dateTime('occurred_at')->index();
+                $table->timestamps();
+                $table->index(['event_name', 'occurred_at']);
+                $table->index(['tree_id', 'event_name']);
+                $table->index(['user_id', 'event_name']);
+            });
+        }
 
         $now = now();
         foreach ([
@@ -201,23 +231,35 @@ return new class extends Migration
         $now = now();
         foreach ($content as $locale => $categories) {
             foreach ($categories as [$slug, $title, $description, $items]) {
-                $categoryId = DB::table('faq_categories')->insertGetId([
-                    'locale' => $locale,
-                    'title' => $title,
-                    'slug' => $slug,
-                    'description' => $description,
-                    'sort_order' => match ($slug) {
-                        'quick-start' => 10,
-                        'people-and-relations' => 20,
-                        'access-and-security' => 30,
-                        'import-and-photos' => 40,
-                        default => 50,
-                    },
-                    'is_published' => true,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]);
+                $categoryId = DB::table('faq_categories')
+                    ->where('locale', $locale)
+                    ->where('slug', $slug)
+                    ->value('id');
+                if (! $categoryId) {
+                    $categoryId = DB::table('faq_categories')->insertGetId([
+                        'locale' => $locale,
+                        'title' => $title,
+                        'slug' => $slug,
+                        'description' => $description,
+                        'sort_order' => match ($slug) {
+                            'quick-start' => 10,
+                            'people-and-relations' => 20,
+                            'access-and-security' => 30,
+                            'import-and-photos' => 40,
+                            default => 50,
+                        },
+                        'is_published' => true,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                }
                 foreach ($items as $index => [$question, $answer, $keywords]) {
+                    if (DB::table('faq_items')
+                        ->where('faq_category_id', $categoryId)
+                        ->where('question', $question)
+                        ->exists()) {
+                        continue;
+                    }
                     DB::table('faq_items')->insert([
                         'faq_category_id' => $categoryId,
                         'question' => $question,
