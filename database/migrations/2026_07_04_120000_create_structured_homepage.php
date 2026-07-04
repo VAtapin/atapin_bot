@@ -93,7 +93,7 @@ return new class extends Migration
                 $table->string('button_action', 30)->nullable();
                 $table->string('button_url')->nullable();
                 $table->timestamps();
-                $table->unique(['home_section_item_id', 'locale']);
+                $table->unique(['home_section_item_id', 'locale'], 'hs_item_tr_item_locale_unique');
             });
         }
 
