@@ -23,6 +23,10 @@ use Illuminate\Database\Eloquent\Builder;
 
 class SubscriptionResource extends Resource
 {
+    protected static string|\UnitEnum|null $navigationGroup = 'Тарифы и платежи';
+
+    protected static ?int $navigationSort = 20;
+
     protected static ?string $model = Subscription::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBanknotes;

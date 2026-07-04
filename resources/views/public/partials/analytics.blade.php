@@ -15,6 +15,7 @@
 
     $analyticsConfig = [
         'endpoint' => route('analytics.event'),
+        'consentEndpoint' => route('analytics.consent'),
         'pendingEndpoint' => auth()->check() ? route('analytics.pending') : null,
         'csrf' => csrf_token(),
         'consent' => request()->cookie('analytics_consent'),
@@ -27,7 +28,7 @@
         <strong id="consent-title">{{ __('public.consent.title') }}</strong>
         <p>
             {{ __('public.consent.text') }}
-            <a href="{{ route('public.page', ['slug' => 'datenschutz', 'lang' => app()->getLocale()]) }}">{{ __('public.consent.details') }}</a>
+            <a href="{{ route('public.page', ['slug' => 'datenschutz']) }}">{{ __('public.consent.details') }}</a>
         </p>
     </div>
     <div class="consent-banner__actions">

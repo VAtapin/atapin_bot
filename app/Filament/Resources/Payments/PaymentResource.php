@@ -18,6 +18,10 @@ use Illuminate\Database\Eloquent\Builder;
 
 class PaymentResource extends Resource
 {
+    protected static string|\UnitEnum|null $navigationGroup = 'Тарифы и платежи';
+
+    protected static ?int $navigationSort = 30;
+
     protected static ?string $model = Payment::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCreditCard;

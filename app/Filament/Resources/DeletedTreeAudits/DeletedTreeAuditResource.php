@@ -12,6 +12,10 @@ use Filament\Tables\Table;
 
 class DeletedTreeAuditResource extends Resource
 {
+    protected static string|\UnitEnum|null $navigationGroup = 'Семейные деревья';
+
+    protected static ?int $navigationSort = 20;
+
     protected static ?string $model = DeletedTreeAudit::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedArchiveBoxXMark;

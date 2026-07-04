@@ -4,18 +4,33 @@ namespace App\Http\Controllers;
 
 use App\Models\CmsPage;
 use App\Models\Plan;
+use App\Services\HomepageService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class PublicSiteController extends Controller
 {
-    public function home(Request $request): View
+    public function home(Request $request, HomepageService $homepage): View
     {
         if ($tree = $request->attributes->get('customDomainTree')) {
             return app(MiniAppController::class)->index($request, $tree);
         }
 
         return view('public.home', [
+            'homePage' => $homepage->published(),
+            'homepage' => $homepage,
+            'plans' => Plan::query()->where('is_active', true)->orderBy('sort_order')->get(),
+            'footerPages' => $this->footerPages(),
+        ]);
+    }
+
+    public function homePreview(Request $request, HomepageService $homepage): View
+    {
+        abort_unless($request->user()?->is_super_admin, 403);
+
+        return view('public.home', [
+            'homePage' => $homepage->preview(),
+            'homepage' => $homepage,
             'plans' => Plan::query()->where('is_active', true)->orderBy('sort_order')->get(),
             'footerPages' => $this->footerPages(),
         ]);

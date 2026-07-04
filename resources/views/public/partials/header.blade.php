@@ -7,7 +7,7 @@
 @endphp
 <header class="site-header">
     <div class="public-wrap site-header__inner">
-        <a class="site-logo" href="{{ route('home', ['lang' => app()->getLocale()]) }}" aria-label="{{ __('public.brand') }}">
+        <a class="site-logo" href="{{ route('home') }}" aria-label="{{ __('public.brand') }}">
             <img class="site-logo__image"
                  src="{{ asset('images/logo.png') }}"
                  width="44"
@@ -32,9 +32,9 @@
         </button>
 
         <nav id="site-navigation" class="site-nav" data-site-nav aria-label="{{ __('public.nav.menu') }}">
-            <a href="{{ route('public.page', ['slug' => 'about', 'lang' => app()->getLocale()]) }}">{{ __('public.nav.about') }}</a>
-            <a href="{{ route('public.page', ['slug' => 'contacts', 'lang' => app()->getLocale()]) }}">{{ __('public.nav.contacts') }}</a>
-            <a href="{{ route('faq', ['lang' => app()->getLocale()]) }}">{{ __('public.nav.help') }}</a>
+            <a href="{{ route('public.page', ['slug' => 'about']) }}">{{ __('public.nav.about') }}</a>
+            <a href="{{ route('public.page', ['slug' => 'contacts']) }}">{{ __('public.nav.contacts') }}</a>
+            <a href="{{ route('faq') }}">{{ __('public.nav.help') }}</a>
 
             @auth
                 <a class="button secondary" href="{{ route('trees.choose') }}">{{ __('public.nav.trees') }}</a>

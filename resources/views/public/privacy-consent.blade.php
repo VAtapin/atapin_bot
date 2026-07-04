@@ -7,7 +7,7 @@
 <section class="content-card content-card--narrow">
     <h1>{{ __('public.privacy.heading') }}</h1>
     <p>{{ __('public.privacy.text') }}</p>
-    <p><a href="{{ route('public.page', ['slug' => 'datenschutz', 'lang' => app()->getLocale()]) }}" target="_blank" rel="noopener">{{ __('public.privacy.read') }}</a></p>
+    <p><a href="{{ route('public.page', ['slug' => 'datenschutz']) }}" target="_blank" rel="noopener">{{ __('public.privacy.read') }}</a></p>
     @if($errors->any())<p class="error" role="alert">{{ $errors->first() }}</p>@endif
     <form method="post" action="{{ route('privacy-consent.store') }}" class="form-grid">
         @csrf

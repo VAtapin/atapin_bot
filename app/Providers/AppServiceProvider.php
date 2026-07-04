@@ -32,6 +32,7 @@ use App\Support\CurrentTree;
 use App\Support\FormHelp;
 use Carbon\Carbon;
 use Filament\Forms\Components\Field;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -49,6 +50,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        URL::defaults(['locale' => (string) config('app.locale', 'ru')]);
         Field::configureUsing(function (Field $field): void {
             if ($help = FormHelp::for($field->getName())) {
                 $field->helperText($help);

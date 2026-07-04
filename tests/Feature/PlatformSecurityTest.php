@@ -55,8 +55,8 @@ class PlatformSecurityTest extends TestCase
 
     public function test_filament_login_routes_use_common_login_page(): void
     {
-        $this->get('/admin/login')->assertRedirect('/login');
-        $this->get('/manage/login')->assertRedirect('/login');
+        $this->get('/admin/login')->assertRedirect('/ru/login');
+        $this->get('/manage/login')->assertRedirect('/ru/login');
     }
 
     public function test_family_records_cannot_be_created_without_or_moved_between_trees(): void

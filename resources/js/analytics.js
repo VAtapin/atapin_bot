@@ -106,10 +106,23 @@ export function trackPublicEvent(name, parameters = {}, options = {}) {
     externalEvent(name, parameters, options.eventId);
 }
 
-function storeConsent(value) {
+async function storeConsent(value) {
+    if (!config.consentEndpoint) return false;
+    const response = await fetch(config.consentEndpoint, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': config.csrf ?? '',
+        },
+        body: JSON.stringify({ consent: value }),
+    }).catch(() => null);
+
+    if (!response?.ok) return false;
     config.consent = value;
-    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = `analytics_consent=${value}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
+
+    return true;
 }
 
 export function initializeAnalytics() {
@@ -150,17 +163,17 @@ export function initializeAnalytics() {
     };
     if (!config.consent && banner) banner.hidden = false;
 
-    document.querySelector('[data-consent-accept]')?.addEventListener('click', () => {
-        storeConsent('granted');
+    document.querySelector('[data-consent-accept]')?.addEventListener('click', async () => {
+        if (!await storeConsent('granted')) return;
         banner.hidden = true;
         loadProviders();
         trackPageEvent();
         trackVisibleSections();
         dispatchPending();
     });
-    document.querySelector('[data-consent-essential]')?.addEventListener('click', () => {
+    document.querySelector('[data-consent-essential]')?.addEventListener('click', async () => {
         const providersWereActive = config.consent === 'granted';
-        storeConsent('essential');
+        if (!await storeConsent('essential')) return;
         banner.hidden = true;
         if (providersWereActive) window.location.reload();
     });

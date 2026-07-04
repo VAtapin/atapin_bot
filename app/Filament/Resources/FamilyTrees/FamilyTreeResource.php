@@ -26,6 +26,10 @@ use Illuminate\Support\Facades\Hash;
 
 class FamilyTreeResource extends Resource
 {
+    protected static string|\UnitEnum|null $navigationGroup = 'Семейные деревья';
+
+    protected static ?int $navigationSort = 10;
+
     protected static ?string $model = FamilyTree::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;

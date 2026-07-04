@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AnalyticsConsentController;
 use App\Http\Controllers\AnalyticsEventController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\FamilyAuthController;
@@ -30,53 +31,71 @@ use App\Models\FamilyTree;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', [PublicSiteController::class, 'home'])->name('home');
 Route::get('/sitemap.xml', SitemapController::class)->name('sitemap');
 Route::post('/analytics/events', AnalyticsEventController::class)
     ->middleware('throttle:120,1')
     ->name('analytics.event');
+Route::post('/privacy/analytics-consent', AnalyticsConsentController::class)
+    ->middleware('throttle:20,1')
+    ->name('analytics.consent');
 Route::get('/analytics/pending', PendingAnalyticsEventsController::class)
     ->middleware(['auth', 'throttle:30,1'])
     ->name('analytics.pending');
-Route::get('/faq', FaqController::class)->name('faq');
-Route::get('/page/{slug}', [PublicSiteController::class, 'page'])->name('public.page');
-Route::get('/page/{slug}/preview', [PublicSiteController::class, 'preview'])
-    ->middleware('auth')
-    ->name('public.page.preview');
-Route::get('/register', [RegistrationController::class, 'create'])->name('register');
-Route::post('/register', [RegistrationController::class, 'store'])->name('register.store');
-Route::get('/login', [PublicAuthController::class, 'create'])->name('login');
-Route::post('/login', [PublicAuthController::class, 'store'])
-    ->middleware('throttle:20,1')
-    ->name('login.store');
-Route::get('/forgot-password', [PasswordResetController::class, 'request'])->name('password.request');
-Route::post('/forgot-password', [PasswordResetController::class, 'email'])
-    ->middleware('throttle:5,1')
-    ->name('password.email');
-Route::get('/reset-password/{token}', [PasswordResetController::class, 'reset'])->name('password.reset');
-Route::post('/reset-password', [PasswordResetController::class, 'update'])->name('password.update');
+
+Route::get('/', fn () => redirect()->route('home', ['locale' => app()->getLocale()]));
+Route::prefix('{locale}')
+    ->where(['locale' => 'ru|de|en|uk'])
+    ->group(function (): void {
+        Route::get('/', [PublicSiteController::class, 'home'])->name('home');
+        Route::get('/home-preview', [PublicSiteController::class, 'homePreview'])
+            ->middleware('auth')
+            ->name('home.preview');
+        Route::get('/faq', FaqController::class)->name('faq');
+        Route::get('/page/{slug}', [PublicSiteController::class, 'page'])->name('public.page');
+        Route::get('/page/{slug}/preview', [PublicSiteController::class, 'preview'])
+            ->middleware('auth')
+            ->name('public.page.preview');
+        Route::get('/register', [RegistrationController::class, 'create'])->name('register');
+        Route::post('/register', [RegistrationController::class, 'store'])->name('register.store');
+        Route::get('/login', [PublicAuthController::class, 'create'])->name('login');
+        Route::post('/login', [PublicAuthController::class, 'store'])
+            ->middleware('throttle:20,1')
+            ->name('login.store');
+        Route::get('/forgot-password', [PasswordResetController::class, 'request'])->name('password.request');
+        Route::post('/forgot-password', [PasswordResetController::class, 'email'])
+            ->middleware('throttle:5,1')
+            ->name('password.email');
+        Route::get('/reset-password/{token}', [PasswordResetController::class, 'reset'])->name('password.reset');
+        Route::post('/reset-password', [PasswordResetController::class, 'update'])->name('password.update');
+    });
+
+foreach ([
+    '/faq' => 'faq',
+    '/register' => 'register',
+    '/login' => 'login',
+    '/forgot-password' => 'password.request',
+] as $legacyPath => $routeName) {
+    Route::get($legacyPath, fn () => redirect()->route($routeName, ['locale' => app()->getLocale()]));
+}
+Route::get('/page/{slug}', fn (string $slug) => redirect()->route('public.page', [
+    'locale' => app()->getLocale(),
+    'slug' => $slug,
+]));
+Route::post('/register', [RegistrationController::class, 'store']);
+Route::post('/login', [PublicAuthController::class, 'store'])->middleware('throttle:20,1');
+Route::post('/forgot-password', [PasswordResetController::class, 'email'])->middleware('throttle:5,1');
+Route::post('/reset-password', [PasswordResetController::class, 'update']);
 Route::post('/logout', [PublicAuthController::class, 'destroy'])->name('logout');
 Route::get('/privacy-consent', [PrivacyConsentController::class, 'show'])->middleware('auth')->name('privacy-consent.show');
 Route::post('/privacy-consent', [PrivacyConsentController::class, 'store'])->middleware(['auth', 'throttle:10,1'])->name('privacy-consent.store');
 Route::get('/trees', TreeChooserController::class)->middleware('auth')->name('trees.choose');
 Route::get('/help', HelpController::class)->middleware('auth')->name('help');
 Route::get('/account', [AccountController::class, 'show'])->middleware('auth')->name('account');
-Route::delete('/account/identities/{identity}', [AccountController::class, 'unlink'])
-    ->middleware('auth')
-    ->name('account.identities.unlink');
-Route::post('/account/telegram/connect', TelegramAccountLinkController::class)
-    ->middleware(['auth', 'throttle:5,1'])
-    ->name('account.telegram.connect');
-Route::middleware('auth')->group(function (): void {
-    Route::get('/account/two-factor/setup', [TotpController::class, 'setup'])
-        ->name('totp.setup');
-    Route::post('/account/two-factor/confirm', [TotpController::class, 'confirm'])
-        ->middleware('throttle:10,1')
-        ->name('totp.confirm');
-    Route::delete('/account/two-factor', [TotpController::class, 'destroy'])
-        ->middleware('throttle:10,1')
-        ->name('totp.destroy');
-});
+Route::delete('/account/identities/{identity}', [AccountController::class, 'unlink'])->middleware('auth')->name('account.identities.unlink');
+Route::post('/account/telegram/connect', TelegramAccountLinkController::class)->middleware(['auth', 'throttle:5,1'])->name('account.telegram.connect');
+Route::get('/account/two-factor/setup', [TotpController::class, 'setup'])->middleware('auth')->name('totp.setup');
+Route::post('/account/two-factor/confirm', [TotpController::class, 'confirm'])->middleware(['auth', 'throttle:10,1'])->name('totp.confirm');
+Route::delete('/account/two-factor', [TotpController::class, 'destroy'])->middleware(['auth', 'throttle:10,1'])->name('totp.destroy');
 Route::get('/billing/{tree:slug}/{plan}/checkout', [BillingController::class, 'checkout'])
     ->middleware('auth')
     ->name('billing.checkout');

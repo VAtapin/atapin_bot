@@ -20,6 +20,10 @@ use Illuminate\Support\Facades\Hash;
 
 class SuperAdministratorResource extends Resource
 {
+    protected static string|\UnitEnum|null $navigationGroup = 'Пользователи и доступ';
+
+    protected static ?int $navigationSort = 20;
+
     protected static ?string $model = User::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedKey;

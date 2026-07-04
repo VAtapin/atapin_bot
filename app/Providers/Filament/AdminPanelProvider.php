@@ -12,6 +12,8 @@ use App\Filament\Resources\DeletedTreeAudits\DeletedTreeAuditResource;
 use App\Filament\Resources\FamilyTrees\FamilyTreeResource;
 use App\Filament\Resources\FaqCategories\FaqCategoryResource;
 use App\Filament\Resources\FaqItems\FaqItemResource;
+use App\Filament\Resources\HomePages\HomePageResource;
+use App\Filament\Resources\HomeSections\HomeSectionResource;
 use App\Filament\Resources\Payments\PaymentResource;
 use App\Filament\Resources\Plans\PlanResource;
 use App\Filament\Resources\PlatformSettings\PlatformSettingResource;
@@ -53,6 +55,15 @@ class AdminPanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Emerald,
             ])
+            ->navigationGroups([
+                'Семейные деревья',
+                'Пользователи и доступ',
+                'Тарифы и платежи',
+                'Аналитика',
+                'Сайт и справка',
+                'Интеграции',
+                'Система',
+            ])
             ->sidebarCollapsibleOnDesktop()
             ->resources([
                 FamilyTreeResource::class,
@@ -65,6 +76,8 @@ class AdminPanelProvider extends PanelProvider
                 PaymentResource::class,
                 PlatformSettingResource::class,
                 SmtpTestLogResource::class,
+                HomePageResource::class,
+                HomeSectionResource::class,
                 CmsPageResource::class,
                 FaqCategoryResource::class,
                 FaqItemResource::class,

@@ -18,6 +18,10 @@ use Throwable;
 
 class SystemHealth extends Page
 {
+    protected static string|\UnitEnum|null $navigationGroup = 'Система';
+
+    protected static ?int $navigationSort = 10;
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedServerStack;
 
     protected static ?string $navigationLabel = 'Мониторинг';

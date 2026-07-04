@@ -53,7 +53,7 @@
             <input name="privacy_consent" type="checkbox" value="1" required @checked(old('privacy_consent')) @error('privacy_consent') aria-invalid="true" @enderror>
             <span>
                 {!! __('public.auth.privacy_consent', [
-                    'privacy' => '<a href="'.e(route('public.page', ['slug' => 'datenschutz', 'lang' => app()->getLocale()])).'" target="_blank" rel="noopener">'.e(__('public.auth.privacy_link')).'</a>',
+                    'privacy' => '<a href="'.e(route('public.page', ['slug' => 'datenschutz'])).'" target="_blank" rel="noopener">'.e(__('public.auth.privacy_link')).'</a>',
                 ]) !!}
             </span>
             @error('privacy_consent')<small class="field-error">{{ $message }}</small>@enderror

@@ -13,16 +13,16 @@ class PublicSeo
     {
         $url ??= url()->current();
         $parts = parse_url($url);
-        parse_str($parts['query'] ?? '', $query);
-        $query['lang'] = $locale;
-
-        $base = ($parts['scheme'] ?? request()->getScheme()).'://'.($parts['host'] ?? request()->getHost());
+        $path = '/'.ltrim($parts['path'] ?? '/', '/');
+        $path = preg_replace('#^/(ru|de|en|uk)(?=/|$)#', '', $path) ?: '/';
+        $localizedPath = "/{$locale}".($path === '/' ? '' : $path);
+        $canonicalHost = (string) config('platform.domains.international', $parts['host'] ?? request()->getHost());
+        $base = ($parts['scheme'] ?? request()->getScheme()).'://'.$canonicalHost;
         if (isset($parts['port'])) {
             $base .= ':'.$parts['port'];
         }
-        $base .= $parts['path'] ?? '/';
 
-        return $base.'?'.http_build_query($query);
+        return $base.$localizedPath;
     }
 
     public static function canonical(Request $request): string

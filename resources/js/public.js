@@ -1,3 +1,5 @@
+import '@fontsource-variable/nunito-sans';
+import '@fontsource-variable/cormorant-garamond';
 import '../css/public.css';
 import { initializeAnalytics } from './analytics.js';
 
@@ -27,7 +29,14 @@ window.addEventListener('resize', () => {
 
 document.querySelector('[data-locale-select]')?.addEventListener('change', (event) => {
     const url = new URL(window.location.href);
-    url.searchParams.set('lang', event.target.value);
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (['ru', 'de', 'en', 'uk'].includes(parts[0])) {
+        parts[0] = event.target.value;
+    } else {
+        parts.unshift(event.target.value);
+    }
+    url.pathname = `/${parts.join('/')}`;
+    url.searchParams.delete('lang');
     window.location.assign(url);
 });
 

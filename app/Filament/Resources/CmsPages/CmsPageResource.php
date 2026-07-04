@@ -20,6 +20,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Validation\Rules\Unique;
+use UnitEnum;
 
 class CmsPageResource extends Resource
 {
@@ -32,6 +33,10 @@ class CmsPageResource extends Resource
     protected static ?string $modelLabel = 'страница';
 
     protected static ?string $pluralModelLabel = 'Страницы сайта';
+
+    protected static string|UnitEnum|null $navigationGroup = 'Сайт и справка';
+
+    protected static ?int $navigationSort = 30;
 
     public static function form(Schema $schema): Schema
     {

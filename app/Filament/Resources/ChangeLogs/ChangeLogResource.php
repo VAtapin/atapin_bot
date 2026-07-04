@@ -15,6 +15,10 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ChangeLogResource extends Resource
 {
+    protected static string|\UnitEnum|null $navigationGroup = 'Система';
+
+    protected static ?int $navigationSort = 30;
+
     protected static ?string $model = ChangeLog::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedClock;
