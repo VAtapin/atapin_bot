@@ -10,8 +10,6 @@
         <a class="site-logo" href="{{ route('home') }}" aria-label="{{ __('public.brand') }}">
             <img class="site-logo__image"
                  src="{{ asset('images/logo.png') }}"
-                 width="44"
-                 height="44"
                  alt=""
                  decoding="async">
             <span class="site-logo__text">
