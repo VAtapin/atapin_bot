@@ -92,7 +92,7 @@ class TreeMembershipResource extends Resource
                     ? 'Изменить привязку'
                     : 'Привязать к человеку')
                 ->icon(Heroicon::OutlinedLink)
-                ->visible(fn (TreeMembership $record): bool => static::canEdit($record))
+                ->visible(fn (TreeMembership $record): bool => static::canManagePersonLink($record))
                 ->schema([
                     Select::make('person_id')
                         ->label('Человек в дереве')
@@ -122,7 +122,7 @@ class TreeMembershipResource extends Resource
                 ->label('Снять привязку')
                 ->icon(Heroicon::OutlinedLinkSlash)
                 ->color('warning')
-                ->visible(fn (TreeMembership $record): bool => (bool) $record->person_id && static::canEdit($record))
+                ->visible(fn (TreeMembership $record): bool => (bool) $record->person_id && static::canManagePersonLink($record))
                 ->requiresConfirmation()
                 ->action(function (TreeMembership $record): void {
                     $record->update(['person_id' => null]);
@@ -150,10 +150,9 @@ class TreeMembershipResource extends Resource
                 ->label('Объединить дубль')
                 ->icon(Heroicon::OutlinedArrowsPointingIn)
                 ->color('warning')
-                ->visible(fn (TreeMembership $record): bool => $record->role !== 'owner'
-                    && ! $record->user?->merged_at
+                ->visible(fn (TreeMembership $record): bool => ! $record->user?->merged_at
                     && ! $record->user?->memberships()->where('tree_id', '!=', $record->tree_id)->exists()
-                    && static::canEdit($record))
+                    && static::canMergeAccount($record))
                 ->schema([
                     Select::make('target_membership_id')
                         ->label('Основной участник этого дерева')
@@ -178,7 +177,9 @@ class TreeMembershipResource extends Resource
                         ->required(),
                 ])
                 ->modalHeading('Объединить дубль внутри этого дерева')
-                ->modalDescription('Это объединяет только учётные записи доступа, а не карточки людей в родословной.')
+                ->modalDescription(fn (TreeMembership $record): string => $record->role === 'owner'
+                    ? 'Это объединяет только учётные записи доступа, а не карточки людей в родословной. Так как текущая запись — владелец дерева, владение перейдёт к выбранной основной записи этого же человека.'
+                    : 'Это объединяет только учётные записи доступа, а не карточки людей в родословной.')
                 ->requiresConfirmation()
                 ->action(function (TreeMembership $record, array $data): void {
                     $sourceName = $record->user?->name ?: $record->user?->email ?: 'дубль';
@@ -232,6 +233,36 @@ class TreeMembershipResource extends Resource
 
         return $record->role !== 'owner'
             && ($actorRole === 'owner' || ($actorRole === 'moderator' && $record->role !== 'moderator'));
+    }
+
+    public static function canManagePersonLink(TreeMembership $record): bool
+    {
+        $user = auth()->user();
+        if ($user?->is_super_admin) {
+            return true;
+        }
+
+        $actorRole = $user?->memberships()
+            ->where('tree_id', $record->tree_id)
+            ->value('role');
+
+        return $actorRole === 'owner'
+            || ($actorRole === 'moderator' && $record->role !== 'owner');
+    }
+
+    public static function canMergeAccount(TreeMembership $record): bool
+    {
+        $user = auth()->user();
+        if ($user?->is_super_admin) {
+            return true;
+        }
+
+        $actorRole = $user?->memberships()
+            ->where('tree_id', $record->tree_id)
+            ->value('role');
+
+        return $actorRole === 'owner'
+            || ($actorRole === 'moderator' && $record->role !== 'owner');
     }
 
     public static function canCreate(): bool
