@@ -67,6 +67,17 @@ class EditTreeProfile extends EditTenantProfile
                             'UTC' => 'UTC',
                         ])
                         ->required(),
+                    Select::make('locale')
+                        ->label('Язык семейного сайта по умолчанию')
+                        ->options([
+                            'ru' => 'Русский',
+                            'de' => 'Deutsch',
+                            'en' => 'English',
+                            'uk' => 'Українська',
+                        ])
+                        ->default('ru')
+                        ->required()
+                        ->helperText('Используется в Mini App, пока конкретный пользователь не выбрал свой язык.'),
                 ])->columns(2),
             Section::make('Оформление и семейный герб')
                 ->id('appearance')
@@ -144,6 +155,18 @@ class EditTreeProfile extends EditTenantProfile
                         ->disabled()
                         ->dehydrated(false)
                         ->columnSpanFull(),
+                    TextInput::make('_bot_mini_app_url')
+                        ->label('URL для Configure Mini App в BotFather')
+                        ->afterStateHydrated(fn (TextInput $component) => $component->state(
+                            route('family.tree', [
+                                'tree' => $this->tenant->slug,
+                                'platform' => 'telegram',
+                            ]),
+                        ))
+                        ->helperText('Обязательно откройте этого бота в @BotFather → Bot Settings → Configure Mini App и укажите данный URL. Без этого Telegram покажет BOT_INVALID при запуске из группы.')
+                        ->disabled()
+                        ->dehydrated(false)
+                        ->columnSpanFull(),
                     Textarea::make('_bot_commands')
                         ->label('Команды, которые увидят пользователи')
                         ->afterStateHydrated(fn (Textarea $component) => $component->state(
@@ -151,7 +174,7 @@ class EditTreeProfile extends EditTenantProfile
                                 ->map(fn (array $command): string => '/'.$command['command'].' — '.$command['description'])
                                 ->implode("\n"),
                         ))
-                        ->helperText('После подключения нижняя кнопка Telegram снова станет меню команд. Кнопку Open необходимо один раз изменить в BotFather.')
+                        ->helperText('После подключения нижняя кнопка Telegram снова станет меню команд. Main App и кнопку Open необходимо один раз настроить именно для этого бота в BotFather.')
                         ->disabled()
                         ->dehydrated(false)
                         ->rows(8)

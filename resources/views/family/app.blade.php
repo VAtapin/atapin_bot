@@ -8,6 +8,15 @@
     <title>{{ $familyName }} — {{ __('miniapp.title_suffix') }}</title>
     @if(($familyAppConfig['platform'] ?? 'web') === 'telegram')
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    @else
+        <script>
+            if (
+                window.location.hash.includes('tgWebAppData=')
+                || new URLSearchParams(window.location.search).has('tgWebAppPlatform')
+            ) {
+                document.write('<script src="https://telegram.org/js/telegram-web-app.js"><\/script>');
+            }
+        </script>
     @endif
     <script>
         window.familyAppConfig = @json($familyAppConfig);
@@ -29,8 +38,16 @@
                     <p>{{ $familySubtitle }}</p>
                 </div>
             </div>
-            @if ($hasBrowserSession)
-                <div class="topbar-actions">
+            <div class="topbar-actions">
+                <label class="language-switcher" title="{{ __('public.language') }}">
+                    <span aria-hidden="true">🌐</span>
+                    <select id="miniapp-language" aria-label="{{ __('public.language') }}">
+                        @foreach(['ru' => 'RU', 'de' => 'DE', 'en' => 'EN', 'uk' => 'UK'] as $code => $label)
+                            <option value="{{ $code }}" @selected(app()->getLocale() === $code)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                @if ($hasBrowserSession)
                     @if(!empty($familyAppConfig['managementUrl']))
                         <a class="logout-button" href="{{ $familyAppConfig['managementUrl'] }}" title="{{ __('miniapp.manage') }}">
                             <span class="action-icon" aria-hidden="true">⚙</span><span class="action-label">{{ __('miniapp.manage') }}</span>
@@ -42,8 +59,8 @@
                             <span class="action-icon" aria-hidden="true">↪</span><span class="action-label">{{ __('miniapp.logout') }}</span>
                         </button>
                     </form>
-                </div>
-            @endif
+                @endif
+            </div>
         </header>
 
         <nav class="tabs" aria-label="{{ __('miniapp.sections') }}">

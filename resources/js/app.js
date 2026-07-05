@@ -18,6 +18,11 @@ const mourningRibbonImage = `data:image/svg+xml;utf8,${encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M10 43L43 10" stroke="#171717" stroke-width="11" stroke-linecap="square"/></svg>',
 )}`;
 const telegram = window.Telegram?.WebApp;
+const telegramLaunchParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+const telegramInitData = telegram?.initData
+    ?? telegramLaunchParams.get('tgWebAppData')
+    ?? new URLSearchParams(window.location.search).get('tgWebAppData')
+    ?? '';
 let cytoscapeLoader;
 const loadCytoscape = () => {
     cytoscapeLoader ??= import('cytoscape').then((module) => module.default);
@@ -30,6 +35,7 @@ const vkLaunchParams = initialParams.has('vk_user_id') && initialParams.has('sig
     : '';
 const startAction = parseMiniAppStartParameter(
     telegram?.initDataUnsafe?.start_param
+    ?? new URLSearchParams(telegramInitData).get('start_param')
     ?? initialParams.get('tgWebAppStartParam'),
 );
 const requestedTab = startAction?.tab ?? initialParams.get('tab');
@@ -61,6 +67,12 @@ const escapeHtml = (value = '') => String(value)
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+
+$('#miniapp-language')?.addEventListener('change', (event) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('lang', event.currentTarget.value);
+    window.location.assign(url.toString());
+});
 
 function parseMiniAppStartParameter(value) {
     if (!value) return null;
@@ -117,7 +129,7 @@ async function api(path, options = {}) {
     const body = options.body;
     const headers = {
         Accept: 'application/json',
-        'X-Telegram-Init-Data': telegram?.initData ?? '',
+        'X-Telegram-Init-Data': telegramInitData,
         'X-VK-Launch-Params': vkLaunchParams,
         'X-Family-Tree-ID': state.treeId ?? '',
         'X-Family-Tree': state.treeSlug ?? '',
@@ -1635,7 +1647,7 @@ if (startAction?.relation || initialParams.get('relation')) {
 
 switchTab(state.activeTab);
 
-if (telegram?.initData) {
+if (telegramInitData) {
     telegram.onEvent?.('activated', syncMiniAppNavigation);
     window.addEventListener('focus', syncMiniAppNavigation);
     document.addEventListener('visibilitychange', () => {

@@ -46,6 +46,7 @@ class TelegramWebhookController extends Controller
         if ($routeTree) {
             $this->currentTree->set($routeTree);
         }
+        $this->bot->respondAs($routeTree);
         $secret = (string) ($routeTree?->custom_bot_webhook_secret ?: config('services.telegram.webhook_secret'));
         $receivedSecret = (string) $request->header('X-Telegram-Bot-Api-Secret-Token');
 
@@ -250,6 +251,17 @@ class TelegramWebhookController extends Controller
             ]);
         }
 
+        if ($group && ! $group->is_active) {
+            if (str_starts_with($command, '/')) {
+                $this->bot->sendMessage(
+                    $chat['id'],
+                    'Группа зарегистрирована. Владелец семейного дерева должен открыть раздел «Группы» и включить «Разрешить доступ группе».',
+                );
+            }
+
+            return;
+        }
+
         if ($command === '/start' && $arguments === 'credentials') {
             $this->sendWebCredentials($chat['id'], $user);
 
@@ -264,17 +276,6 @@ class TelegramWebhookController extends Controller
 
         if ($command === '/start') {
             $this->sendWelcome($chat['id'], $user);
-
-            return;
-        }
-
-        if ($group && ! $group->is_active) {
-            if (str_starts_with($command, '/')) {
-                $this->bot->sendMessage(
-                    $chat['id'],
-                    'Эта группа зарегистрирована, но ещё не подтверждена администратором семьи.',
-                );
-            }
 
             return;
         }
@@ -1120,17 +1121,24 @@ class TelegramWebhookController extends Controller
     private function miniAppButton(int $chatId, string $text, string $url): array
     {
         $button = ['text' => $text];
+        $tree = $this->currentTree->get();
+        $startParameter = 'tree_'.($this->currentTree->id() ?: 0).'_'.$this->miniAppStartParameter($url);
+
+        if (
+            $this->bot->isRespondingAsPlatformBot()
+            && $tree?->custom_bot_verified_at
+            && $tree?->custom_bot_username
+        ) {
+            $username = ltrim((string) $tree->custom_bot_username, '@');
+            $button['url'] = "https://t.me/{$username}?startapp=".rawurlencode($startParameter);
+
+            return $button;
+        }
 
         if ($chatId > 0) {
             $button['web_app'] = ['url' => $url];
         } else {
-            $tree = $this->currentTree->get();
-            $username = ltrim((string) (
-                $tree?->custom_bot_verified_at && $tree?->custom_bot_username
-                    ? $tree->custom_bot_username
-                    : config('services.telegram.bot_username')
-            ), '@');
-            $startParameter = 'tree_'.($this->currentTree->id() ?: 0).'_'.$this->miniAppStartParameter($url);
+            $username = $this->bot->responseUsername();
             $button['url'] = "https://t.me/{$username}?startapp=".rawurlencode($startParameter);
         }
 
@@ -1171,14 +1179,21 @@ class TelegramWebhookController extends Controller
         $tree = $this->currentTree->get();
 
         return $tree
-            ? route('family.tree.person', ['tree' => $tree, 'person' => $focusId])
-            : route('family.person', ['person' => $focusId]);
+            ? route('family.tree.person', [
+                'tree' => $tree,
+                'person' => $focusId,
+                'platform' => 'telegram',
+            ])
+            : route('family.person', ['person' => $focusId, 'platform' => 'telegram']);
     }
 
     private function treeBaseUrl(): string
     {
         return $this->currentTree->get()
-            ? route('family.tree', $this->currentTree->get())
+            ? route('family.tree', [
+                'tree' => $this->currentTree->get(),
+                'platform' => 'telegram',
+            ])
             : config('services.telegram.mini_app_url');
     }
 }

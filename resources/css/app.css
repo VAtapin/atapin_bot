@@ -43,6 +43,28 @@ button { cursor: pointer; }
 
 .brand { display: flex; align-items: center; gap: 10px; }
 .topbar-actions { display: flex; align-items: center; gap: 7px; }
+.language-switcher {
+    display: inline-flex;
+    min-height: 36px;
+    align-items: center;
+    gap: 3px;
+    padding: 0 7px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--muted);
+}
+.language-switcher select {
+    width: auto;
+    min-width: 38px;
+    padding: 0;
+    border: 0;
+    appearance: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+}
 .action-icon { display: none; }
 .brand-mark {
     display: grid;

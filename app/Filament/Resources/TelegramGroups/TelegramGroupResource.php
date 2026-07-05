@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources\TelegramGroups;
 
-use App\Filament\Resources\TelegramGroups\Pages\CreateTelegramGroup;
 use App\Filament\Resources\TelegramGroups\Pages\EditTelegramGroup;
 use App\Filament\Resources\TelegramGroups\Pages\ListTelegramGroups;
 use App\Models\TelegramGroup;
@@ -48,8 +47,10 @@ class TelegramGroupResource extends Resource
                     ->dehydrated(false),
                 TextInput::make('telegram_chat_id')
                     ->label('ID чата Telegram')
-                    ->required()
-                    ->numeric(),
+                    ->numeric()
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->helperText('Определяется автоматически после команды боту в Telegram-группе.'),
                 TextInput::make('title')
                     ->label('Название')
                     ->required(),
@@ -69,8 +70,8 @@ class TelegramGroupResource extends Resource
                     ->default(true)
                     ->required(),
                 Toggle::make('is_active')
-                    ->label('Группа подтверждена')
-                    ->helperText('Только подтверждённые группы получают семейные данные.')
+                    ->label('Разрешить доступ группе')
+                    ->helperText('После включения бот сможет показывать в этой группе приватные семейные данные и отправлять уведомления.')
                     ->required(),
                 DatePicker::make('birthday_last_sent_on')
                     ->label('Последнее уведомление')
@@ -104,7 +105,7 @@ class TelegramGroupResource extends Resource
                     ->label('Дни рождения')
                     ->boolean(),
                 IconColumn::make('is_active')
-                    ->label('Подтверждена')
+                    ->label('Доступ разрешён')
                     ->boolean(),
                 TextColumn::make('birthday_last_sent_on')
                     ->label('Отправлено')
@@ -147,17 +148,18 @@ class TelegramGroupResource extends Resource
     {
         return [
             'index' => ListTelegramGroups::route('/'),
-            'create' => CreateTelegramGroup::route('/create'),
             'edit' => EditTelegramGroup::route('/{record}/edit'),
         ];
     }
 
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery();
-
-        return auth()->user()?->is_super_admin
-            ? $query
-            : $query->where('tree_id', app(CurrentTree::class)->id());
+        return parent::getEloquentQuery()
+            ->where('tree_id', app(CurrentTree::class)->id());
     }
 }

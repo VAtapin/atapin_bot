@@ -19,6 +19,8 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\URL;
 use Illuminate\View\View;
 
 class MiniAppController extends Controller
@@ -29,6 +31,7 @@ class MiniAppController extends Controller
         ?Person $person = null,
     ): View {
         $tree ??= app(CurrentTree::class)->get();
+        $this->applyTreeLocale($request, $tree);
         $platform = $request->has('tgWebAppPlatform')
             ? 'telegram'
             : ($request->has('vk_user_id') && $request->has('sign')
@@ -88,6 +91,26 @@ class MiniAppController extends Controller
                 'previewMode' => $request->attributes->get('treePreviewMode'),
             ],
         ]);
+    }
+
+    private function applyTreeLocale(Request $request, ?FamilyTree $tree): void
+    {
+        $supported = ['ru', 'de', 'en', 'uk'];
+        $requested = mb_strtolower((string) $request->query('lang', ''));
+        $stored = mb_strtolower((string) (
+            $request->session()->get('locale')
+            ?: $request->cookie('locale')
+        ));
+        $treeLocale = mb_strtolower((string) $tree?->locale);
+
+        if (
+            ! in_array($requested, $supported, true)
+            && ! in_array($stored, $supported, true)
+            && in_array($treeLocale, $supported, true)
+        ) {
+            App::setLocale($treeLocale);
+            URL::defaults(['locale' => $treeLocale]);
+        }
     }
 
     public function tree(Request $request): JsonResponse
