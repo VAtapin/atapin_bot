@@ -17,6 +17,12 @@ const dateLocale = ({ ru: 'ru-RU', de: 'de-DE', en: 'en-US', uk: 'uk-UA' })[
 const mourningRibbonImage = `data:image/svg+xml;utf8,${encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M10 43L43 10" stroke="#171717" stroke-width="11" stroke-linecap="square"/></svg>',
 )}`;
+const branchContinuationImage = `data:image/svg+xml;utf8,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="5" y="12" width="15" height="10" rx="4" fill="#77859a"/><rect x="28" y="12" width="15" height="10" rx="4" fill="#77859a"/><path d="M12.5 22v10h23V22" fill="none" stroke="#77859a" stroke-width="4" stroke-linecap="round"/></svg>',
+)}`;
+const birthdayCandleImage = `data:image/svg+xml;utf8,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M24 4c6 7 6 12 0 17-6-5-6-10 0-17Z" fill="#f3a51f"/><rect x="17" y="20" width="14" height="23" rx="4" fill="#e95f73"/><path d="M18 28h12M18 35h12" stroke="#fff" stroke-width="3"/></svg>',
+)}`;
 const telegram = window.Telegram?.WebApp;
 const telegramLaunchParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
 const telegramInitData = telegram?.initData
@@ -188,9 +194,17 @@ function showError(message, payload = {}) {
     setLoading(false);
 }
 
-function personElements(data) {
+function treeMetrics() {
+    const mobile = window.matchMedia('(max-width: 700px)').matches;
+
+    return mobile
+        ? { mobile, personWidth: 126, personHeight: 174, spouseGap: 16, familyGap: 54, generationGap: 260, unionOffset: 108 }
+        : { mobile, personWidth: 220, personHeight: 96, spouseGap: 28, familyGap: 110, generationGap: 245, unionOffset: 76 };
+}
+
+function personElements(data, metrics) {
     state.people = new Map(data.people.map((person) => [String(person.id), person]));
-    const positions = calculateFamilyTreePositions(data);
+    const positions = calculateFamilyTreePositions(data, metrics);
 
     const nodes = data.people.map((person) => ({
         data: {
@@ -199,11 +213,13 @@ function personElements(data) {
             years: person.life_years || '',
             photo: person.photo_url || '',
             gender: person.gender,
+            relation: person.relation || '',
         },
         classes: [
             'person',
             person.photo_url ? 'has-photo' : '',
             person.death_date ? 'deceased' : '',
+            person.relation ? `relation-${person.relation}` : '',
         ].filter(Boolean).join(' '),
         position: positions.get(String(person.id)),
     }));
@@ -219,9 +235,54 @@ function personElements(data) {
                     image: mourningRibbonImage,
                 },
                 classes: 'mourning-ribbon',
-                position: { x: position.x + 92, y: position.y + 34 },
+                position: {
+                    x: position.x + (metrics.mobile ? 46 : 92),
+                    y: position.y + (metrics.mobile ? 68 : 34),
+                },
                 grabbable: false,
                 selectable: false,
+            };
+        });
+    const continuationNodes = data.people
+        .filter((person) => person.hidden_relations > 0 && positions.has(String(person.id)))
+        .map((person) => {
+            const position = positions.get(String(person.id));
+
+            return {
+                data: {
+                    id: `continuation-${person.id}`,
+                    kind: 'continuation',
+                    personId: String(person.id),
+                    image: branchContinuationImage,
+                },
+                classes: 'branch-continuation',
+                position: {
+                    x: position.x + (metrics.mobile ? 44 : 88),
+                    y: position.y - (metrics.mobile ? 72 : 36),
+                },
+                grabbable: false,
+            };
+        });
+    const birthdayNodes = data.people
+        .filter((person) => person.birthday && person.birthday.days <= 30 && positions.has(String(person.id)))
+        .map((person) => {
+            const position = positions.get(String(person.id));
+
+            return {
+                data: {
+                    id: `birthday-${person.id}`,
+                    kind: 'birthday',
+                    personId: String(person.id),
+                    recipient: person.name,
+                    date: person.birthday.date,
+                    image: birthdayCandleImage,
+                },
+                classes: 'birthday-candle',
+                position: {
+                    x: position.x - (metrics.mobile ? 45 : 88),
+                    y: position.y - (metrics.mobile ? 72 : 36),
+                },
+                grabbable: false,
             };
         });
 
@@ -293,7 +354,15 @@ function personElements(data) {
         }
     }
 
-    return [...nodes, ...mourningNodes, ...unionNodes, ...parentEdges, ...partnershipEdges];
+    return [
+        ...nodes,
+        ...mourningNodes,
+        ...continuationNodes,
+        ...birthdayNodes,
+        ...unionNodes,
+        ...parentEdges,
+        ...partnershipEdges,
+    ];
 }
 
 function familyTreePositions(data) {
@@ -527,12 +596,13 @@ function treeDateLabel(person) {
 
 async function renderTree(data) {
     const cytoscape = await loadCytoscape();
+    const metrics = treeMetrics();
     state.cytoscape?.destroy();
     $('#empty').hidden = data.people.length > 0;
 
     state.cytoscape = cytoscape({
         container: $('#tree'),
-        elements: personElements(data),
+        elements: personElements(data, metrics),
         minZoom: 0.25,
         maxZoom: 2.5,
         wheelSensitivity: 0.2,
@@ -540,8 +610,8 @@ async function renderTree(data) {
             {
                 selector: 'node.person',
                 style: {
-                    width: 220,
-                    height: 96,
+                    width: metrics.personWidth,
+                    height: metrics.personHeight,
                     shape: 'round-rectangle',
                     'background-color': '#fffdf8',
                     'border-color': '#d7cbb9',
@@ -565,7 +635,21 @@ async function renderTree(data) {
             },
             {
                 selector: 'node.person.has-photo',
-                style: {
+                style: metrics.mobile ? {
+                    'background-image': 'data(photo)',
+                    'background-fit': 'cover',
+                    'background-width': 72,
+                    'background-height': 72,
+                    'background-position-x': '50%',
+                    'background-position-y': '23%',
+                    'background-clip': 'node',
+                    'text-valign': 'bottom',
+                    'text-halign': 'center',
+                    'text-margin-y': -16,
+                    'text-margin-x': 0,
+                    'text-max-width': 108,
+                    'font-size': 12,
+                } : {
                     'background-image': 'data(photo)',
                     'background-fit': 'none',
                     'background-width': 68,
@@ -576,6 +660,20 @@ async function renderTree(data) {
                     'text-halign': 'center',
                     'text-margin-x': 39,
                     'text-max-width': 126,
+                },
+            },
+            {
+                selector: 'node.person.relation-self',
+                style: {
+                    'border-width': 4,
+                    'shadow-opacity': 0.28,
+                },
+            },
+            {
+                selector: 'node.person.relation-children, node.person.relation-grandchildren',
+                style: {
+                    'border-width': 2.5,
+                    'shadow-opacity': 0.2,
                 },
             },
             {
@@ -622,6 +720,21 @@ async function renderTree(data) {
                     'events': 'no',
                     'overlay-opacity': 0,
                     'z-index': 20,
+                },
+            },
+            {
+                selector: 'node.branch-continuation, node.birthday-candle',
+                style: {
+                    width: 30,
+                    height: 30,
+                    shape: 'ellipse',
+                    'background-color': '#fffdf8',
+                    'background-image': 'data(image)',
+                    'background-fit': 'contain',
+                    'border-width': 1,
+                    'border-color': '#d7cbb9',
+                    'overlay-opacity': 0,
+                    'z-index': 30,
                 },
             },
             {
@@ -673,6 +786,20 @@ async function renderTree(data) {
     });
 
     state.cytoscape.on('tap', 'node.person', (event) => showPerson(event.target.id()));
+    state.cytoscape.on('tap', 'node.branch-continuation', async (event) => {
+        state.focusId = String(event.target.data('personId'));
+        state.scope = 'branch';
+        await loadTree();
+    });
+    state.cytoscape.on('tap', 'node.birthday-candle', (event) => {
+        openCongratulation({
+            occasion: 'birthday',
+            personId: String(event.target.data('personId')),
+            recipient: event.target.data('recipient'),
+            date: event.target.data('date'),
+            calendarTitle: t('birthday_calendar_title', { name: event.target.data('recipient') }),
+        });
+    });
     const focusNode = data.focus_id ? state.cytoscape.getElementById(String(data.focus_id)) : null;
 
     state.cytoscape.fit(undefined, 48);
@@ -944,6 +1071,50 @@ function fillCities(cities) {
     select.value = current;
 }
 
+function openCongratulation({
+    occasion,
+    personId = '',
+    partnershipId = '',
+    recipient = '',
+    date = '',
+    calendarTitle = '',
+}) {
+    const form = $('#congratulation-form');
+    form.reset();
+    form.elements.occasion.value = occasion;
+    form.elements.person_id.value = personId;
+    form.elements.partnership_id.value = partnershipId;
+    form.elements.message.value = occasion === 'birthday' ? t('birthday_wish') : t('anniversary_wish');
+    $('#congratulation-recipient').textContent = recipient;
+    $('#congratulation-message').textContent = '';
+    const calendarButton = $('#congratulation-calendar');
+    calendarButton.hidden = !date;
+    calendarButton.dataset.date = date;
+    calendarButton.dataset.title = calendarTitle;
+    $('#congratulation-modal').hidden = false;
+}
+
+function downloadCalendarEvent({ date, title }) {
+    const compact = String(date).replaceAll('-', '');
+    const next = new Date(`${date}T12:00:00`);
+    next.setDate(next.getDate() + 1);
+    const nextDate = `${next.getFullYear()}${String(next.getMonth() + 1).padStart(2, '0')}${String(next.getDate()).padStart(2, '0')}`;
+    const escapeIcs = (value) => String(value).replaceAll('\\', '\\\\').replaceAll('\n', '\\n').replaceAll(',', '\\,').replaceAll(';', '\\;');
+    const content = [
+        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Idommoy//Family Calendar//RU', 'CALSCALE:GREGORIAN',
+        'BEGIN:VEVENT', `UID:${crypto.randomUUID?.() ?? `${Date.now()}@idommoy.com`}`,
+        `DTSTAMP:${new Date().toISOString().replaceAll(/[-:]/g, '').replace(/\.\d{3}/, '')}`,
+        `DTSTART;VALUE=DATE:${compact}`, `DTEND;VALUE=DATE:${nextDate}`,
+        `SUMMARY:${escapeIcs(title)}`, 'TRANSP:TRANSPARENT', 'END:VEVENT', 'END:VCALENDAR',
+    ].join('\r\n');
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/calendar;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${compact}-${String(title).replaceAll(/[^\p{L}\p{N}]+/gu, '-')}.ics`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function loadBirthdays() {
     setLoading(true);
 
@@ -962,8 +1133,9 @@ async function loadBirthdays() {
                     <div class="birthday-side">
                         <em>${item.days === 0 ? escapeHtml(t('today')) : escapeHtml(t('in_days', { count: item.days }))}</em>
                         ${String(item.id) !== String(data.viewer_person_id ?? '')
-                            ? `<button class="congratulate-button" type="button" data-occasion="birthday" data-person-id="${item.id}" data-recipient="${escapeHtml(item.name)}">${escapeHtml(t('congratulate'))}</button>`
+                            ? `<button class="congratulate-button" type="button" data-occasion="birthday" data-person-id="${item.id}" data-recipient="${escapeHtml(item.name)}" data-date="${item.date}" data-calendar-title="${escapeHtml(t('birthday_calendar_title', { name: item.name }))}">${escapeHtml(t('congratulate'))}</button>`
                             : ''}
+                        <button class="calendar-button" type="button" data-date="${item.date}" data-title="${escapeHtml(t('birthday_calendar_title', { name: item.name }))}">${escapeHtml(t('add_calendar'))}</button>
                     </div>
                 </article>
             `).join('')
@@ -981,7 +1153,8 @@ async function loadBirthdays() {
                     </div>
                     <div class="birthday-side">
                         <em>${item.days === 0 ? escapeHtml(t('today')) : escapeHtml(t('in_days', { count: item.days }))}</em>
-                        <button class="congratulate-button" type="button" data-occasion="anniversary" data-partnership-id="${item.id}" data-recipient="${escapeHtml(item.title)}">${escapeHtml(t('congratulate'))}</button>
+                        <button class="congratulate-button" type="button" data-occasion="anniversary" data-partnership-id="${item.id}" data-recipient="${escapeHtml(item.title)}" data-date="${item.date}" data-calendar-title="${escapeHtml(t('anniversary_calendar_title', { name: item.title }))}">${escapeHtml(t('congratulate'))}</button>
+                        <button class="calendar-button" type="button" data-date="${item.date}" data-title="${escapeHtml(t('anniversary_calendar_title', { name: item.title }))}">${escapeHtml(t('add_calendar'))}</button>
                     </div>
                 </article>
             `).join('')}`
@@ -996,19 +1169,20 @@ async function loadBirthdays() {
             `).join('')}`
             : '';
         document.querySelectorAll('.congratulate-button').forEach((button) => {
-            button.addEventListener('click', () => {
-                const form = $('#congratulation-form');
-                form.reset();
-                form.elements.occasion.value = button.dataset.occasion;
-                form.elements.person_id.value = button.dataset.personId ?? '';
-                form.elements.partnership_id.value = button.dataset.partnershipId ?? '';
-                form.elements.message.value = button.dataset.occasion === 'birthday'
-                    ? t('birthday_wish')
-                    : t('anniversary_wish');
-                $('#congratulation-recipient').textContent = button.dataset.recipient ?? '';
-                $('#congratulation-message').textContent = '';
-                $('#congratulation-modal').hidden = false;
-            });
+            button.addEventListener('click', () => openCongratulation({
+                occasion: button.dataset.occasion,
+                personId: button.dataset.personId ?? '',
+                partnershipId: button.dataset.partnershipId ?? '',
+                recipient: button.dataset.recipient ?? '',
+                date: button.dataset.date ?? '',
+                calendarTitle: button.dataset.calendarTitle ?? '',
+            }));
+        });
+        document.querySelectorAll('.calendar-button').forEach((button) => {
+            button.addEventListener('click', () => downloadCalendarEvent({
+                date: button.dataset.date,
+                title: button.dataset.title,
+            }));
         });
     } catch (error) {
         showError(error.message, error.payload);
@@ -1583,6 +1757,12 @@ document.querySelector('.report-issue-close').addEventListener('click', () => {
 });
 document.querySelector('.congratulation-close').addEventListener('click', () => {
     $('#congratulation-modal').hidden = true;
+});
+$('#congratulation-calendar').addEventListener('click', (event) => {
+    downloadCalendarEvent({
+        date: event.currentTarget.dataset.date,
+        title: event.currentTarget.dataset.title,
+    });
 });
 $('#congratulation-modal').addEventListener('click', (event) => {
     if (event.target.id === 'congratulation-modal') event.currentTarget.hidden = true;

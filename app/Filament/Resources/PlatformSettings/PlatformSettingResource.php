@@ -60,7 +60,18 @@ class PlatformSettingResource extends Resource
                     }
                 })
                 ->dehydrated(fn (?string $state, ?PlatformSetting $record): bool => ! $record?->is_secret || filled($state))
-                ->helperText(fn (?PlatformSetting $record): ?string => $record?->description)
+                ->helperText(fn (?PlatformSetting $record): ?string => match ($record?->key) {
+                    'billing_enabled' => 'Включайте только после заполнения ключа Stripe и webhook-секрета. После включения владельцы деревьев увидят кнопку оплаты.',
+                    'billing_provider' => 'Для Stripe укажите значение stripe. Поддерживаются также manual и yookassa.',
+                    'billing_test_mode' => '1 — тестовые платежи с ключом sk_test_…; 0 — реальные платежи с ключом sk_live_….',
+                    'billing_secret_key' => 'Секретный API-ключ Stripe из Developers → API keys. Сохранённое значение намеренно не показывается повторно.',
+                    'billing_shop_id' => 'Для Stripe оставьте пустым. Поле используется только для Shop ID ЮKassa.',
+                    'billing_webhook_secret' => 'Stripe: signing secret вида whsec_… для endpoint '.url('/api/payments/webhook/stripe').'. Это не API-ключ.',
+                    default => $record?->description,
+                })
+                ->placeholder(fn (?PlatformSetting $record): ?string => $record?->is_secret && filled($record->value)
+                    ? 'Секрет уже сохранён — оставьте пустым, чтобы не менять'
+                    : null)
                 ->columnSpanFull(),
         ]);
     }

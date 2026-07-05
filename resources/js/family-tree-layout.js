@@ -1,4 +1,4 @@
-export function calculateFamilyTreePositions(data) {
+export function calculateFamilyTreePositions(data, options = {}) {
     const people = new Map(data.people.map((person) => [String(person.id), person]));
     const parentLinks = data.parent_child.map((link) => ({
         parent: String(link.parent_id),
@@ -100,10 +100,11 @@ export function calculateFamilyTreePositions(data) {
         });
     };
 
-    const personWidth = 220;
-    const spouseGap = 28;
-    const familyGap = 110;
-    const generationGap = 245;
+    const personWidth = options.personWidth ?? 220;
+    const spouseGap = options.spouseGap ?? 28;
+    const familyGap = options.familyGap ?? 110;
+    const generationGap = options.generationGap ?? 245;
+    const unionOffset = options.unionOffset ?? 76;
     const clusters = [...components.entries()].map(([root, members]) => {
         const ordered = orderedMembers(members);
         const childMembers = members.filter((id) => parentLinks.some((link) => link.child === id));
@@ -198,7 +199,7 @@ export function calculateFamilyTreePositions(data) {
         if (one && two) {
             positions.set(unionId, {
                 x: (one.x + two.x) / 2,
-                y: Math.max(one.y, two.y) + 76,
+                y: Math.max(one.y, two.y) + unionOffset,
             });
         }
     }

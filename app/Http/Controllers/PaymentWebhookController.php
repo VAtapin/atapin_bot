@@ -41,9 +41,34 @@ class PaymentWebhookController extends Controller
                 'yookassa' => $this->yookassa($payload),
                 default => $this->generic($request),
             };
+            if (($data['kind'] ?? null) === 'ignored') {
+                $log->update(['status' => 'ignored', 'processed_at' => now()]);
+
+                return response()->json(['ok' => true, 'ignored' => true]);
+            }
+            $tree = FamilyTree::query()->findOrFail($data['tree_id']);
+            $plan = Plan::query()->findOrFail($data['plan_id']);
+            if (($data['kind'] ?? 'payment') === 'subscription') {
+                $payments->syncSubscription(
+                    $tree,
+                    $plan,
+                    $provider,
+                    $data['subscription_reference'],
+                    $data['subscription_status'],
+                    $data['amount'],
+                    $data['currency'],
+                    $data['customer_reference'] ?? null,
+                    $data['period_start'] ?? null,
+                    $data['period_end'] ?? null,
+                    (bool) ($data['cancel_at_period_end'] ?? false),
+                );
+                $log->update(['status' => 'processed', 'processed_at' => now()]);
+
+                return response()->json(['ok' => true, 'subscription' => true]);
+            }
             $payment = $payments->record(
-                FamilyTree::query()->findOrFail($data['tree_id']),
-                Plan::query()->findOrFail($data['plan_id']),
+                $tree,
+                $plan,
                 $provider,
                 $data['reference'],
                 $data['status'],
@@ -52,6 +77,10 @@ class PaymentWebhookController extends Controller
                 $payload,
                 isset($data['user_id']) ? User::query()->find($data['user_id']) : null,
                 $data['idempotency_key'] ?? null,
+                $data['subscription_reference'] ?? null,
+                $data['customer_reference'] ?? null,
+                $data['period_start'] ?? null,
+                $data['period_end'] ?? null,
             );
             $log->update(['status' => 'processed', 'processed_at' => now()]);
 
@@ -74,25 +103,109 @@ class PaymentWebhookController extends Controller
         $expected = hash_hmac('sha256', $timestamp[1].'.'.$request->getContent(), $secret);
         abort_unless(hash_equals($expected, $provided[1]), 403);
 
+        $type = (string) ($payload['type'] ?? '');
         $object = $payload['data']['object'] ?? [];
-        $metadata = $object['metadata'] ?? [];
-        $status = match ($payload['type'] ?? '') {
-            'checkout.session.completed', 'payment_intent.succeeded' => 'paid',
-            'charge.refunded' => 'refunded',
-            'payment_intent.payment_failed' => 'failed',
-            default => 'pending',
-        };
+        if (! in_array($type, [
+            'checkout.session.completed',
+            'customer.subscription.created',
+            'invoice.paid',
+            'invoice.payment_failed',
+            'invoice.payment_action_required',
+            'customer.subscription.updated',
+            'customer.subscription.deleted',
+            'charge.refunded',
+        ], true)) {
+            return ['kind' => 'ignored'];
+        }
+        if ($type === 'charge.refunded' && ! ($object['refunded'] ?? false)) {
+            return ['kind' => 'ignored'];
+        }
 
-        return [
-            'reference' => (string) ($object['id'] ?? $payload['id']),
+        $subscriptionId = $object['subscription']
+            ?? $object['parent']['subscription_details']['subscription']
+            ?? (str_starts_with($type, 'customer.subscription.') ? ($object['id'] ?? null) : null)
+            ?? ($type === 'checkout.session.completed' ? ($object['subscription'] ?? null) : null);
+        if ($type === 'charge.refunded' && ! $subscriptionId && filled($object['invoice'] ?? null)) {
+            $invoice = $this->stripeObject('invoices/'.rawurlencode((string) $object['invoice']));
+            $subscriptionId = $invoice['subscription']
+                ?? $invoice['parent']['subscription_details']['subscription']
+                ?? null;
+        }
+        $subscription = $subscriptionId
+            ? $this->stripeObject('subscriptions/'.rawurlencode((string) $subscriptionId))
+            : [];
+        $metadata = array_merge($subscription['metadata'] ?? [], $object['metadata'] ?? []);
+        $periodStart = $object['lines']['data'][0]['period']['start']
+            ?? $subscription['items']['data'][0]['current_period_start']
+            ?? $subscription['current_period_start']
+            ?? null;
+        $periodEnd = $object['lines']['data'][0]['period']['end']
+            ?? $subscription['items']['data'][0]['current_period_end']
+            ?? $subscription['current_period_end']
+            ?? null;
+        $amount = ((int) (
+            $object['amount_total']
+            ?? $object['amount_paid']
+            ?? $object['amount_due']
+            ?? $object['amount_refunded']
+            ?? $subscription['items']['data'][0]['price']['unit_amount']
+            ?? 0
+        )) / 100;
+        $currency = strtoupper((string) (
+            $object['currency']
+            ?? $subscription['currency']
+            ?? $subscription['items']['data'][0]['price']['currency']
+            ?? 'EUR'
+        ));
+        $base = [
             'tree_id' => (int) ($metadata['tree_id'] ?? 0),
             'plan_id' => (int) ($metadata['plan_id'] ?? 0),
             'user_id' => (int) ($metadata['user_id'] ?? 0),
             'idempotency_key' => $metadata['idempotency_key'] ?? null,
-            'status' => $status,
-            'amount' => ((int) ($object['amount_total'] ?? $object['amount_received'] ?? 0)) / 100,
-            'currency' => strtoupper((string) ($object['currency'] ?? 'EUR')),
+            'subscription_reference' => (string) ($subscriptionId ?? ''),
+            'customer_reference' => (string) ($object['customer'] ?? $subscription['customer'] ?? ''),
+            'period_start' => $periodStart ? date('c', (int) $periodStart) : null,
+            'period_end' => $periodEnd ? date('c', (int) $periodEnd) : null,
+            'amount' => $amount,
+            'currency' => $currency,
         ];
+
+        if (in_array($type, ['checkout.session.completed', 'customer.subscription.created', 'customer.subscription.updated', 'customer.subscription.deleted'], true)) {
+            $providerStatus = $type === 'customer.subscription.deleted'
+                ? 'canceled'
+                : (string) ($subscription['status'] ?? 'active');
+
+            return [...$base,
+                'kind' => 'subscription',
+                'subscription_status' => match ($providerStatus) {
+                    'active', 'trialing' => 'active',
+                    'past_due', 'unpaid', 'incomplete' => 'past_due',
+                    default => 'cancelled',
+                },
+                'cancel_at_period_end' => (bool) ($subscription['cancel_at_period_end'] ?? false),
+            ];
+        }
+
+        return [...$base,
+            'kind' => 'payment',
+            'reference' => (string) ($object['id'] ?? $payload['id']),
+            'status' => match ($type) {
+                'invoice.paid' => 'paid',
+                'invoice.payment_failed', 'invoice.payment_action_required' => 'failed',
+                'charge.refunded' => 'refunded',
+            },
+        ];
+    }
+
+    private function stripeObject(string $path): array
+    {
+        $secret = (string) PlatformSetting::value('billing_secret_key');
+        abort_if($secret === '', 503, 'Не указан секретный ключ Stripe.');
+
+        return Http::withToken($secret)
+            ->get('https://api.stripe.com/v1/'.$path)
+            ->throw()
+            ->json();
     }
 
     private function yookassa(array $payload): array

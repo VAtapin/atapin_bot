@@ -18,6 +18,7 @@ class Plan extends Model
         'backup_retention_days',
         'price_monthly',
         'currency',
+        'provider_price_reference',
         'custom_bot',
         'custom_domain',
         'is_active',

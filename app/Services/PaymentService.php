@@ -8,6 +8,7 @@ use App\Models\Plan;
 use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
 
 class PaymentService
 {
@@ -22,10 +23,14 @@ class PaymentService
         array $payload,
         ?User $user = null,
         ?string $idempotencyKey = null,
+        ?string $subscriptionReference = null,
+        ?string $customerReference = null,
+        ?string $periodStart = null,
+        ?string $periodEnd = null,
     ): Payment {
-        $wasActive = Subscription::query()
+        $wasActive = Payment::query()
             ->where('tree_id', $tree->id)
-            ->where('status', 'active')
+            ->where('status', 'paid')
             ->exists();
         $payment = DB::transaction(function () use (
             $tree,
@@ -38,6 +43,10 @@ class PaymentService
             $payload,
             $user,
             $idempotencyKey,
+            $subscriptionReference,
+            $customerReference,
+            $periodStart,
+            $periodEnd,
         ): Payment {
             $subscription = Subscription::query()->firstOrCreate(
                 ['tree_id' => $tree->id],
@@ -48,34 +57,44 @@ class PaymentService
                     'currency' => $currency,
                 ],
             );
-            $payment = Payment::query()->updateOrCreate(
-                ['provider' => $provider, 'provider_reference' => $reference],
-                [
+            $payment = $idempotencyKey
+                ? Payment::query()
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->where('status', 'pending')
+                    ->first()
+                : null;
+            $payment ??= Payment::query()->firstOrNew([
+                'provider' => $provider,
+                'provider_reference' => $reference,
+            ]);
+            $payment->fill([
                     'tree_id' => $tree->id,
                     'subscription_id' => $subscription->id,
                     'plan_id' => $plan->id,
                     'user_id' => $user?->id,
-                    'idempotency_key' => $idempotencyKey,
+                    'idempotency_key' => $payment?->exists ? $idempotencyKey : null,
                     'status' => $status,
                     'amount' => $amount,
                     'currency' => strtoupper($currency),
                     'description' => "Тариф «{$plan->name}» на 1 месяц",
-                    'period_starts_at' => now(),
-                    'period_ends_at' => now()->addMonth(),
+                    'provider_reference' => $reference,
+                    'period_starts_at' => $periodStart ? Carbon::parse($periodStart) : now(),
+                    'period_ends_at' => $periodEnd ? Carbon::parse($periodEnd) : now()->addMonth(),
                     'payload' => $payload,
                     'paid_at' => $status === 'paid' ? now() : null,
                     'failed_at' => $status === 'failed' ? now() : null,
                     'refunded_at' => $status === 'refunded' ? now() : null,
-                ],
-            );
+                ])->save();
+            $payment->refresh();
 
             if ($status === 'paid') {
-                $periodEndsAt = now()->addMonth();
+                $periodEndsAt = $periodEnd ? Carbon::parse($periodEnd) : now()->addMonth();
                 $subscription->update([
                     'plan_id' => $plan->id,
                     'status' => 'active',
                     'provider' => $provider,
-                    'provider_reference' => $reference,
+                    'provider_reference' => $subscriptionReference ?: $reference,
+                    'provider_customer_reference' => $customerReference ?: $subscription->provider_customer_reference,
                     'amount' => $amount,
                     'currency' => strtoupper($currency),
                     'starts_at' => $subscription->starts_at ?: now(),
@@ -141,5 +160,56 @@ class PaymentService
         }
 
         return $payment;
+    }
+
+    public function syncSubscription(
+        FamilyTree $tree,
+        Plan $plan,
+        string $provider,
+        string $subscriptionReference,
+        string $status,
+        string|float $amount,
+        string $currency,
+        ?string $customerReference = null,
+        ?string $periodStart = null,
+        ?string $periodEnd = null,
+        bool $cancelAtPeriodEnd = false,
+    ): Subscription {
+        return DB::transaction(function () use (
+            $tree,
+            $plan,
+            $provider,
+            $subscriptionReference,
+            $status,
+            $amount,
+            $currency,
+            $customerReference,
+            $periodStart,
+            $periodEnd,
+            $cancelAtPeriodEnd,
+        ): Subscription {
+            $subscription = Subscription::query()->firstOrNew(['tree_id' => $tree->id]);
+            $subscription->fill([
+                'plan_id' => $plan->id,
+                'status' => $status,
+                'provider' => $provider,
+                'provider_reference' => $subscriptionReference,
+                'provider_customer_reference' => $customerReference,
+                'amount' => $amount,
+                'currency' => strtoupper($currency),
+                'starts_at' => $periodStart ? Carbon::parse($periodStart) : ($subscription->starts_at ?: now()),
+                'ends_at' => $periodEnd ? Carbon::parse($periodEnd) : $subscription->ends_at,
+                'next_billing_at' => $status === 'active' && $periodEnd ? Carbon::parse($periodEnd) : null,
+                'grace_ends_at' => $status === 'past_due' ? now()->addDays(7) : null,
+                'cancel_at_period_end' => $cancelAtPeriodEnd,
+                'cancelled_at' => $status === 'cancelled' ? now() : null,
+            ]);
+            $subscription->save();
+            if ($status === 'active') {
+                $tree->update(['plan_id' => $plan->id, 'status' => 'active']);
+            }
+
+            return $subscription->fresh();
+        });
     }
 }

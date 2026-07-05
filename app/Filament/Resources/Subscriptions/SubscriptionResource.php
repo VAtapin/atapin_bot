@@ -6,6 +6,7 @@ use App\Filament\Resources\Subscriptions\Pages\EditSubscription;
 use App\Filament\Resources\Subscriptions\Pages\ListSubscriptions;
 use App\Models\PlatformSetting;
 use App\Models\Subscription;
+use App\Services\BillingService;
 use App\Support\CurrentTree;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -86,7 +87,11 @@ class SubscriptionResource extends Resource
                     && (auth()->user()?->is_super_admin || auth()->user()?->ownsTree($record->tree)))
                 ->requiresConfirmation()
                 ->action(function (Subscription $record): void {
-                    $record->update(['cancel_at_period_end' => true, 'cancelled_at' => now()]);
+                    if ($record->provider === 'stripe') {
+                        app(BillingService::class)->cancelAtPeriodEnd($record->tree);
+                    } else {
+                        $record->update(['cancel_at_period_end' => true]);
+                    }
                     Notification::make()->title('Автопродление отключено')->success()->send();
                 }),
             Action::make('archive')

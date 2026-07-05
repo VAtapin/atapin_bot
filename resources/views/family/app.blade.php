@@ -191,6 +191,7 @@
             <input name="person_id" type="hidden">
             <input name="partnership_id" type="hidden">
             <textarea name="message" placeholder="{{ __('miniapp.congratulation.message') }}" required minlength="2" maxlength="1000"></textarea>
+            <button id="congratulation-calendar" class="calendar-button" type="button" hidden>{{ __('miniapp.js.add_calendar') }}</button>
             <button type="submit">{{ __('miniapp.congratulation.send') }}</button>
             <small id="congratulation-message"></small>
         </form>

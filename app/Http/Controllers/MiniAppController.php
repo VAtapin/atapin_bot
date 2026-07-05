@@ -268,9 +268,44 @@ class MiniAppController extends Controller
             ->get()
             ->keyBy('id');
         $listGroups = $this->listGroups($people, $allParentChild, $allPartnerships, $peopleById);
+        $visibleIds = $ids->map(fn ($id): int => (int) $id)->flip();
+        $today = now()->startOfDay();
 
         return response()->json([
-            'people' => $people->map(fn (Person $person): array => [
+            'people' => $people->map(function (Person $person) use (
+                $allParentChild,
+                $allPartnerships,
+                $peopleById,
+                $relationMap,
+                $visibleIds,
+                $today,
+            ): array {
+                $linkedIds = $allParentChild
+                    ->filter(fn ($link): bool => (int) $link->parent_id === $person->id || (int) $link->child_id === $person->id)
+                    ->flatMap(fn ($link): array => [(int) $link->parent_id, (int) $link->child_id])
+                    ->merge($allPartnerships
+                        ->filter(fn ($link): bool => (int) $link->partner_one_id === $person->id || (int) $link->partner_two_id === $person->id)
+                        ->flatMap(fn ($link): array => [(int) $link->partner_one_id, (int) $link->partner_two_id]))
+                    ->reject(fn (int $id): bool => $id === $person->id)
+                    ->unique();
+                $hiddenRelations = $linkedIds->reject(fn (int $id): bool => $visibleIds->has($id))->count();
+                $birthday = null;
+                if (! $person->death_date && $person->birth_date && $person->birth_date_precision === 'day') {
+                    $next = Carbon::create(
+                        $today->year,
+                        $person->birth_date->month,
+                        min($person->birth_date->day, Carbon::create($today->year, $person->birth_date->month)->daysInMonth),
+                    );
+                    if ($next->lt($today)) {
+                        $next->addYear();
+                    }
+                    $birthday = [
+                        'date' => $next->toDateString(),
+                        'days' => $today->diffInDays($next),
+                    ];
+                }
+
+                return [
                 'id' => (string) $person->id,
                 'name' => $person->full_name,
                 'maiden_name' => $person->maiden_name,
@@ -295,13 +330,16 @@ class MiniAppController extends Controller
                     'title' => $photo->title,
                 ])->values(),
                 'relation' => $relationMap[$person->id] ?? null,
+                'hidden_relations' => $hiddenRelations,
+                'birthday' => $birthday,
                 'relatives' => $this->relativeSummary(
                     $person->id,
                     $allParentChild,
                     $allPartnerships,
                     $peopleById,
                 ),
-            ]),
+                ];
+            }),
             'parent_child' => $parentChild,
             'partnerships' => $partnerships,
             'tree' => [

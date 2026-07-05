@@ -42,6 +42,10 @@ class PlanResource extends Resource
             Textarea::make('description')->label('Описание'),
             TextInput::make('price_monthly')->label('Цена в месяц')->numeric()->required(),
             TextInput::make('currency')->label('Валюта')->default('EUR')->required(),
+            TextInput::make('provider_price_reference')
+                ->label('Stripe Price ID')
+                ->placeholder('price_…')
+                ->helperText('Создайте в Stripe ежемесячную recurring Price и вставьте её ID. Нужен для безопасной смены тарифа; при первой покупке без него цена создаётся Checkout автоматически.'),
             TextInput::make('storage_limit_mb')
                 ->label('Хранилище, МБ')
                 ->helperText('1024 МБ = 1 ГБ. Значение хранится внутри системы в байтах.')
