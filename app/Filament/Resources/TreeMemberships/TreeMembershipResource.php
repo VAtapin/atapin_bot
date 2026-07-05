@@ -97,6 +97,7 @@ class TreeMembershipResource extends Resource
                     Select::make('person_id')
                         ->label('Человек в дереве')
                         ->options(fn (TreeMembership $record): array => Person::query()
+                            ->where('tree_id', $record->tree_id)
                             ->orderBy('last_name')
                             ->orderBy('first_name')
                             ->get()
@@ -111,7 +112,11 @@ class TreeMembershipResource extends Resource
                 ->fillForm(fn (TreeMembership $record): array => ['person_id' => $record->person_id])
                 ->action(function (TreeMembership $record, array $data): void {
                     $record->update(['person_id' => $data['person_id']]);
-                    Notification::make()->title('Учётная запись привязана к человеку')->success()->send();
+                    Notification::make()
+                        ->title('Учётная запись привязана к человеку')
+                        ->body('Теперь «Моя семья» и семейная ветка будут строиться от выбранной карточки.')
+                        ->success()
+                        ->send();
                 }),
             Action::make('unlink_person')
                 ->label('Снять привязку')
@@ -121,7 +126,11 @@ class TreeMembershipResource extends Resource
                 ->requiresConfirmation()
                 ->action(function (TreeMembership $record): void {
                     $record->update(['person_id' => null]);
-                    Notification::make()->title('Привязка снята')->success()->send();
+                    Notification::make()
+                        ->title('Привязка снята')
+                        ->body('Учётная запись осталась участником дерева, но больше не связана с карточкой человека.')
+                        ->success()
+                        ->send();
                 }),
             Action::make('send_credentials')
                 ->label('Прислать логин и пароль')
@@ -148,7 +157,7 @@ class TreeMembershipResource extends Resource
                 ->schema([
                     Select::make('target_membership_id')
                         ->label('Основной участник этого дерева')
-                        ->helperText('Текущая учётная запись будет объединена с выбранной. Telegram, способы входа и доступы перенесутся к основному участнику.')
+                        ->helperText('Текущий участник будет присоединён к выбранному. Если у дубля есть Telegram, логин или пароль, они перейдут к основной записи.')
                         ->options(fn (TreeMembership $record): array => TreeMembership::query()
                             ->with(['user', 'person'])
                             ->where('tree_id', $record->tree_id)
@@ -169,7 +178,7 @@ class TreeMembershipResource extends Resource
                         ->required(),
                 ])
                 ->modalHeading('Объединить дубль внутри этого дерева')
-                ->modalDescription('Используйте это, когда один человек вошёл по приглашению и потом через Telegram, из-за чего появился второй участник.')
+                ->modalDescription('Это объединяет только учётные записи доступа, а не карточки людей в родословной.')
                 ->requiresConfirmation()
                 ->action(function (TreeMembership $record, array $data): void {
                     $sourceName = $record->user?->name ?: $record->user?->email ?: 'дубль';

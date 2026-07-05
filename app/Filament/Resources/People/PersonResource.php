@@ -12,10 +12,8 @@ use App\Filament\Resources\People\RelationManagers\PartnershipsRelationManager;
 use App\Filament\Resources\People\RelationManagers\PhotosRelationManager;
 use App\Models\Person;
 use App\Models\TreeMembership;
-use App\Services\PersonMergeService;
 use App\Support\CurrentTree;
 use BackedEnum;
-use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -214,26 +212,6 @@ class PersonResource extends Resource
                 TrashedFilter::make(),
             ])
             ->recordActions([
-                Action::make('merge')
-                    ->label('Объединить дубль')
-                    ->icon(Heroicon::OutlinedArrowsPointingIn)
-                    ->color('warning')
-                    ->schema([
-                        Select::make('target_id')
-                            ->label('Оставить основную карточку')
-                            ->options(fn (Person $record): array => Person::query()
-                                ->whereKeyNot($record->id)
-                                ->orderBy('last_name')
-                                ->get()
-                                ->mapWithKeys(fn (Person $person): array => [$person->id => $person->full_name])
-                                ->all())
-                            ->searchable()
-                            ->required(),
-                    ])
-                    ->requiresConfirmation()
-                    ->modalDescription('Связи, фотографии и сведения будут перенесены в выбранную карточку. Текущая карточка попадёт в корзину.')
-                    ->action(fn (Person $record, array $data) => app(PersonMergeService::class)
-                        ->merge($record, Person::query()->findOrFail($data['target_id']))),
                 EditAction::make(),
                 DeleteAction::make()
                     ->modalDescription(fn (Person $record): string => sprintf(

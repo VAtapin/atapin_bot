@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ChangeLog;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class UserMergeService
@@ -35,6 +36,25 @@ class UserMergeService
         }
 
         return DB::transaction(function () use ($source, $target, $actor): User {
+            $source->refresh();
+            $target->refresh();
+
+            $targetUpdates = $this->accountFieldsToMove($source, $target);
+            $sourcePreMergeUpdates = [];
+
+            if (array_key_exists('email', $targetUpdates)) {
+                $sourcePreMergeUpdates['email'] = 'merged_'.$source->id.'_'.now()->timestamp.'@idommoy.local';
+            }
+
+            if (array_key_exists('login', $targetUpdates)) {
+                $sourcePreMergeUpdates['login'] = null;
+            }
+
+            if ($sourcePreMergeUpdates !== []) {
+                $source->forceFill($sourcePreMergeUpdates)->save();
+                $source->refresh();
+            }
+
             DB::table('family_trees')->where('owner_user_id', $source->id)->update(['owner_user_id' => $target->id]);
 
             foreach ($source->memberships()->get() as $membership) {
@@ -68,7 +88,7 @@ class UserMergeService
                 DB::table('sessions')->where('user_id', $source->id)->delete();
             }
 
-            $target->update([
+            $target->update(array_merge([
                 'is_super_admin' => $target->is_super_admin || $source->is_super_admin,
                 'super_admin_assigned_by_user_id' => $target->is_super_admin
                     ? $target->super_admin_assigned_by_user_id
@@ -84,7 +104,7 @@ class UserMergeService
                 'two_factor_last_used_counter' => $target->two_factor_secret
                     ? $target->two_factor_last_used_counter
                     : $source->two_factor_last_used_counter,
-            ]);
+            ], $targetUpdates));
             $source->update([
                 'is_active' => false,
                 'is_super_admin' => false,
@@ -109,5 +129,39 @@ class UserMergeService
 
             return $target->fresh();
         });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function accountFieldsToMove(User $source, User $target): array
+    {
+        $updates = [];
+
+        if ($this->isTechnicalEmail($target->email) && ! $this->isTechnicalEmail($source->email)) {
+            $updates['email'] = $source->email;
+        }
+
+        if (blank($target->login) && filled($source->login)) {
+            $updates['login'] = $source->login;
+        }
+
+        if ((array_key_exists('email', $updates) || array_key_exists('login', $updates))
+            && filled($source->getRawOriginal('password'))) {
+            $updates['password'] = $source->getRawOriginal('password');
+        }
+
+        if (! $target->privacy_accepted_at && $source->privacy_accepted_at) {
+            $updates['privacy_accepted_at'] = $source->privacy_accepted_at;
+            $updates['privacy_policy_version'] = $source->privacy_policy_version;
+            $updates['privacy_ip_hash'] = $source->privacy_ip_hash;
+        }
+
+        return $updates;
+    }
+
+    private function isTechnicalEmail(?string $email): bool
+    {
+        return $email === null || Str::endsWith(Str::lower($email), '@idommoy.local');
     }
 }
