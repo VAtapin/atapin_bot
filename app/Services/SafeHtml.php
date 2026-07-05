@@ -66,13 +66,17 @@ class SafeHtml
                 }
             }
 
-            foreach (['href', 'src'] as $attribute) {
-                if (! $node->hasAttribute($attribute)) {
-                    continue;
-                }
-                $url = trim($node->getAttribute($attribute));
+            if ($node->hasAttribute('href')) {
+                $url = trim($node->getAttribute('href'));
                 if (! preg_match('~^(https?://|/|#)~i', $url)) {
-                    $node->removeAttribute($attribute);
+                    $node->removeAttribute('href');
+                }
+            }
+
+            if ($node->hasAttribute('src')) {
+                $url = trim($node->getAttribute('src'));
+                if (! str_starts_with($url, '/storage/')) {
+                    $node->removeAttribute('src');
                 }
             }
             if ($node->tagName === 'a' && $node->getAttribute('target') === '_blank') {

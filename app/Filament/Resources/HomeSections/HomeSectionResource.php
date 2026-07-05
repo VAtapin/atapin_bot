@@ -11,6 +11,8 @@ use App\Models\HomeSection;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\CodeEditor;
+use Filament\Forms\Components\CodeEditor\Enums\Language;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Repeater;
@@ -22,6 +24,8 @@ use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
@@ -105,7 +109,24 @@ class HomeSectionResource extends Resource
                                         ->fileAttachmentsDirectory('homepage/content')
                                         ->fileAttachmentsAcceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
                                         ->fileAttachmentsMaxSize(5120)
-                                        ->helperText('Используется в текстовых блоках, приватности и финальном призыве.')
+                                        ->toolbarButtons([
+                                            ['bold', 'italic', 'underline', 'strike', 'subscript', 'superscript', 'link'],
+                                            ['h2', 'h3'],
+                                            ['alignStart', 'alignCenter', 'alignEnd'],
+                                            ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
+                                            ['table', 'attachFiles'],
+                                            ['undo', 'redo'],
+                                        ])
+                                        ->helperText('Кнопка со скрепкой загружает изображение на наш сервер и вставляет его в текст. Используется в текстовых блоках, приватности и финальном призыве.')
+                                        ->columnSpanFull(),
+                                    CodeEditor::make('content_html')
+                                        ->label('HTML-код')
+                                        ->language(Language::Html)
+                                        ->afterStateHydrated(fn (CodeEditor $component, Get $get) => $component->state($get('content')))
+                                        ->live(onBlur: true)
+                                        ->afterStateUpdated(fn (?string $state, Set $set) => $set('content', $state))
+                                        ->dehydrated(false)
+                                        ->helperText('Для ручной правки разметки. После сохранения код очищается от опасных тегов и атрибутов.')
                                         ->columnSpanFull(),
                                     TextInput::make('image_alt')->label('Описание изображения')->maxLength(180),
                                     TextInput::make('primary_label')->label('Текст основной кнопки'),
