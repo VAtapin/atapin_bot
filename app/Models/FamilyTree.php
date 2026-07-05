@@ -185,6 +185,21 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
         return $this->hasMany(Subscription::class, 'tree_id');
     }
 
+    public function currentSubscription(): ?Subscription
+    {
+        return $this->subscriptions()
+            ->with('plan')
+            ->whereNull('archived_at')
+            ->whereIn('status', ['trial', 'active', 'past_due', 'grace'])
+            ->latest('id')
+            ->first();
+    }
+
+    public function effectivePlan(): ?Plan
+    {
+        return $this->currentSubscription()?->plan ?: $this->plan;
+    }
+
     public function backups(): HasMany
     {
         return $this->hasMany(TreeBackup::class, 'tree_id');

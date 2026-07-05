@@ -8,6 +8,8 @@ use App\Services\AnalyticsService;
 use App\Services\BillingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use RuntimeException;
+use Throwable;
 
 class BillingController extends Controller
 {
@@ -35,7 +37,18 @@ class BillingController extends Controller
             ],
         );
 
-        return $billing->checkout($tree, $plan, $request->user());
+        try {
+            return $billing->checkout($tree, $plan, $request->user());
+        } catch (Throwable $exception) {
+            report($exception);
+
+            $message = $exception instanceof RuntimeException
+                ? $exception->getMessage()
+                : 'Не удалось открыть оплату. Проверьте настройки Stripe и попробуйте ещё раз.';
+
+            return redirect('/manage/'.$tree->slug.'/subscriptions')
+                ->with('status', $message);
+        }
     }
 
     public function returned(Request $request, FamilyTree $tree): RedirectResponse

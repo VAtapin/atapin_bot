@@ -172,17 +172,21 @@ class TreeMembershipResource extends Resource
                 ->modalDescription('Используйте это, когда один человек вошёл по приглашению и потом через Telegram, из-за чего появился второй участник.')
                 ->requiresConfirmation()
                 ->action(function (TreeMembership $record, array $data): void {
+                    $sourceName = $record->user?->name ?: $record->user?->email ?: 'дубль';
                     $targetMembership = TreeMembership::query()
+                        ->with('user')
                         ->where('tree_id', $record->tree_id)
                         ->whereKey($data['target_membership_id'])
                         ->firstOrFail();
+                    $targetName = $targetMembership->user?->name ?: $targetMembership->user?->email ?: 'основная запись';
 
                     app(UserMergeService::class)->merge($record->user, $targetMembership->user, auth()->user());
 
                     Notification::make()
                         ->title('Дубли объединены')
-                        ->body('Способы входа и доступы перенесены к основному участнику дерева.')
+                        ->body("{$sourceName} объединён с {$targetName}. Способы входа, Telegram и доступы перенесены к основной записи.")
                         ->success()
+                        ->persistent()
                         ->send();
                 }),
             EditAction::make()->visible(fn (TreeMembership $record): bool => static::canEdit($record)),

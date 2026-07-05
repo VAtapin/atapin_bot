@@ -51,8 +51,10 @@ class SubscriptionResource extends Resource
                 'cancelled' => 'Отменена',
                 'expired' => 'Истекла',
             ])->required(),
-            TextInput::make('provider')->label('Платёжная система'),
-            TextInput::make('provider_reference')->label('ID платежа'),
+            TextInput::make('provider_reference')
+                ->label('ID платежа у провайдера')
+                ->disabled()
+                ->dehydrated(false),
             TextInput::make('amount')->label('Сумма')->numeric(),
             TextInput::make('currency')->label('Валюта'),
             DateTimePicker::make('starts_at')->label('Начало'),
