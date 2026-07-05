@@ -89,14 +89,18 @@ class EditPerson extends EditRecord
                 ->label('Снять привязку')
                 ->icon('heroicon-o-link-slash')
                 ->color('warning')
-                ->visible(fn (): bool => $this->record->memberships()->exists())
+                ->visible(fn (): bool => $this->record->memberships()
+                    ->where('role', '!=', 'owner')
+                    ->exists())
                 ->requiresConfirmation()
                 ->action(function (): void {
-                    $this->record->memberships()->update([
-                        'person_id' => null,
-                        'person_linked_at' => null,
-                        'person_linked_by_user_id' => null,
-                    ]);
+                    $this->record->memberships()
+                        ->where('role', '!=', 'owner')
+                        ->update([
+                            'person_id' => null,
+                            'person_linked_at' => null,
+                            'person_linked_by_user_id' => null,
+                        ]);
                     Notification::make()->title('Привязка снята')->success()->send();
                 }),
             DeleteAction::make(),

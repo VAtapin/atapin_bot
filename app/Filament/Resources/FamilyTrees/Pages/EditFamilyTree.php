@@ -6,6 +6,7 @@ use App\Filament\Resources\FamilyTrees\FamilyTreeResource;
 use App\Models\ChangeLog;
 use App\Models\TreeMembership;
 use App\Services\CustomDomainService;
+use App\Services\OwnerPersonService;
 use Filament\Resources\Pages\EditRecord;
 
 class EditFamilyTree extends EditRecord
@@ -29,15 +30,7 @@ class EditFamilyTree extends EditRecord
             return;
         }
 
-        TreeMembership::query()->updateOrCreate(
-            ['tree_id' => $this->record->id, 'user_id' => $this->record->owner_user_id],
-            [
-                'role' => 'owner',
-                'status' => 'approved',
-                'approved_by_user_id' => auth()->id(),
-                'approved_at' => now(),
-            ],
-        );
+        app(OwnerPersonService::class)->ensure($this->record, $this->record->owner);
         if ($this->previousOwnerId) {
             TreeMembership::query()
                 ->where('tree_id', $this->record->id)

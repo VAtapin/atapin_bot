@@ -51,6 +51,11 @@ class TreeMembership extends Model
                     'role' => 'Роль владельца назначается только передачей владения деревом.',
                 ]);
             }
+            if ($membership->role === 'owner' && ! $membership->person_id) {
+                throw ValidationException::withMessages([
+                    'person_id' => 'Владелец дерева должен быть привязан к человеку в дереве.',
+                ]);
+            }
             if (
                 (int) $tree?->owner_user_id === (int) $membership->user_id
                 && ($membership->role !== 'owner' || $membership->status !== 'approved')

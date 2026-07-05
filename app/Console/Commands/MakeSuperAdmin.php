@@ -3,8 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\FamilyTree;
-use App\Models\TreeMembership;
 use App\Models\User;
+use App\Services\OwnerPersonService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
@@ -46,15 +46,7 @@ class MakeSuperAdmin extends Command
         if ($orphanTree) {
             $orphanTree->update(['owner_user_id' => $user->id]);
 
-            TreeMembership::query()->updateOrCreate(
-                ['tree_id' => $orphanTree->id, 'user_id' => $user->id],
-                [
-                    'role' => 'owner',
-                    'status' => 'approved',
-                    'approved_by_user_id' => $user->id,
-                    'approved_at' => now(),
-                ],
-            );
+            app(OwnerPersonService::class)->ensure($orphanTree, $user);
 
             $this->components->info("Дерево «{$orphanTree->name}» назначено этому владельцу.");
         }

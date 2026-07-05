@@ -6,9 +6,9 @@ use App\Models\FamilyTree;
 use App\Models\Plan;
 use App\Models\PlatformSetting;
 use App\Models\Subscription;
-use App\Models\TreeMembership;
 use App\Models\User;
 use App\Services\AnalyticsService;
+use App\Services\OwnerPersonService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -103,14 +103,7 @@ class RegistrationController extends Controller
                 'status' => 'active',
                 'trial_ends_at' => now()->addDays(30),
             ]);
-            TreeMembership::query()->create([
-                'tree_id' => $tree->id,
-                'user_id' => $user->id,
-                'role' => 'owner',
-                'status' => 'approved',
-                'approved_by_user_id' => $user->id,
-                'approved_at' => now(),
-            ]);
+            app(OwnerPersonService::class)->ensure($tree, $user);
             if ($plan) {
                 Subscription::query()->create([
                     'tree_id' => $tree->id,

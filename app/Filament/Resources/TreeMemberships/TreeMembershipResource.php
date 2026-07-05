@@ -8,6 +8,7 @@ use App\Filament\Resources\TreeMemberships\Pages\ListTreeMemberships;
 use App\Models\Person;
 use App\Models\TelegramUser;
 use App\Models\TreeMembership;
+use App\Models\User;
 use App\Services\UserCredentialService;
 use App\Services\UserMergeService;
 use App\Support\CurrentTree;
@@ -122,7 +123,9 @@ class TreeMembershipResource extends Resource
                 ->label('Снять привязку')
                 ->icon(Heroicon::OutlinedLinkSlash)
                 ->color('warning')
-                ->visible(fn (TreeMembership $record): bool => (bool) $record->person_id && static::canManagePersonLink($record))
+                ->visible(fn (TreeMembership $record): bool => $record->role !== 'owner'
+                    && (bool) $record->person_id
+                    && static::canManagePersonLink($record))
                 ->requiresConfirmation()
                 ->action(function (TreeMembership $record): void {
                     $record->update(['person_id' => null]);
@@ -151,46 +154,29 @@ class TreeMembershipResource extends Resource
                 ->icon(Heroicon::OutlinedArrowsPointingIn)
                 ->color('warning')
                 ->visible(fn (TreeMembership $record): bool => ! $record->user?->merged_at
-                    && ! $record->user?->memberships()->where('tree_id', '!=', $record->tree_id)->exists()
                     && static::canMergeAccount($record))
                 ->schema([
-                    Select::make('target_membership_id')
-                        ->label('Основной участник этого дерева')
-                        ->helperText('Текущий участник будет присоединён к выбранному. Если у дубля есть Telegram, логин или пароль, они перейдут к основной записи.')
-                        ->options(fn (TreeMembership $record): array => TreeMembership::query()
-                            ->with(['user', 'person'])
-                            ->where('tree_id', $record->tree_id)
-                            ->whereKeyNot($record->id)
-                            ->where('user_id', '!=', $record->user_id)
-                            ->whereHas('user', fn ($query) => $query->whereNull('merged_at'))
-                            ->orderBy('role')
-                            ->get()
-                            ->mapWithKeys(fn (TreeMembership $membership): array => [
-                                $membership->id => trim(
-                                    ($membership->user?->name ?: 'Без имени')
-                                    .' — '.($membership->person?->full_name ?: 'без привязки')
-                                    .' · '.(TreeMembership::ROLES[$membership->role] ?? $membership->role)
-                                ),
-                            ])
-                            ->all())
+                    Select::make('target_user_id')
+                        ->label('Основной аккаунт')
+                        ->helperText('Текущий участник будет присоединён к выбранному аккаунту. Можно выбрать участника дерева или Telegram-аккаунт, который ещё не привязан к этому дереву.')
+                        ->options(fn (TreeMembership $record): array => static::mergeTargetOptions($record))
                         ->searchable()
                         ->required(),
                 ])
                 ->modalHeading('Объединить дубль внутри этого дерева')
                 ->modalDescription(fn (TreeMembership $record): string => $record->role === 'owner'
-                    ? 'Это объединяет только учётные записи доступа, а не карточки людей в родословной. Так как текущая запись — владелец дерева, владение перейдёт к выбранной основной записи этого же человека.'
-                    : 'Это объединяет только учётные записи доступа, а не карточки людей в родословной.')
+                    ? 'Это объединяет только учётные записи доступа, а не карточки людей в родословной. Все способы входа и доступы дубля перейдут к выбранной основной записи. Так как текущая запись — владелец дерева, владение перейдёт к выбранной основной записи этого же человека.'
+                    : 'Это объединяет только учётные записи доступа, а не карточки людей в родословной. Все способы входа и доступы дубля перейдут к выбранной основной записи.')
                 ->requiresConfirmation()
                 ->action(function (TreeMembership $record, array $data): void {
                     $sourceName = $record->user?->name ?: $record->user?->email ?: 'дубль';
-                    $targetMembership = TreeMembership::query()
-                        ->with('user')
-                        ->where('tree_id', $record->tree_id)
-                        ->whereKey($data['target_membership_id'])
+                    $targetUser = User::query()
+                        ->whereKey($data['target_user_id'])
+                        ->whereNull('merged_at')
                         ->firstOrFail();
-                    $targetName = $targetMembership->user?->name ?: $targetMembership->user?->email ?: 'основная запись';
+                    $targetName = $targetUser->name ?: $targetUser->email ?: 'основная запись';
 
-                    app(UserMergeService::class)->merge($record->user, $targetMembership->user, auth()->user());
+                    app(UserMergeService::class)->merge($record->user, $targetUser, auth()->user());
 
                     Notification::make()
                         ->title('Дубли объединены')
@@ -263,6 +249,48 @@ class TreeMembershipResource extends Resource
 
         return $actorRole === 'owner'
             || ($actorRole === 'moderator' && $record->role !== 'owner');
+    }
+
+    public static function mergeTargetOptions(TreeMembership $record): array
+    {
+        $memberships = TreeMembership::query()
+            ->with(['user', 'person'])
+            ->where('tree_id', $record->tree_id)
+            ->whereKeyNot($record->id)
+            ->where('user_id', '!=', $record->user_id)
+            ->whereHas('user', fn ($query) => $query->whereNull('merged_at'))
+            ->orderBy('role')
+            ->get();
+
+        $options = $memberships
+            ->mapWithKeys(fn (TreeMembership $membership): array => [
+                $membership->user_id => trim(
+                    ($membership->user?->name ?: 'Без имени')
+                    .' — '.($membership->person?->full_name ?: 'без привязки')
+                    .' · '.(TreeMembership::ROLES[$membership->role] ?? $membership->role)
+                ),
+            ])
+            ->all();
+
+        $knownUserIds = $memberships->pluck('user_id')->push($record->user_id)->filter()->unique();
+        $telegramUsers = TelegramUser::query()
+            ->with('user')
+            ->where('current_tree_id', $record->tree_id)
+            ->whereNotNull('user_id')
+            ->whereNotIn('user_id', $knownUserIds)
+            ->whereHas('user', fn ($query) => $query->whereNull('merged_at'))
+            ->get();
+
+        foreach ($telegramUsers as $telegramUser) {
+            $options[$telegramUser->user_id] = trim(
+                ($telegramUser->user?->name ?: $telegramUser->display_name)
+                .' — Telegram'
+                .($telegramUser->username ? ' @'.$telegramUser->username : '')
+                .' · ещё не участник дерева'
+            );
+        }
+
+        return $options;
     }
 
     public static function canCreate(): bool

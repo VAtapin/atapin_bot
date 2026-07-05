@@ -4,8 +4,8 @@ namespace App\Filament\Resources\FamilyTrees\Pages;
 
 use App\Filament\Resources\FamilyTrees\FamilyTreeResource;
 use App\Models\Subscription;
-use App\Models\TreeMembership;
 use App\Services\CustomDomainService;
+use App\Services\OwnerPersonService;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateFamilyTree extends CreateRecord
@@ -18,15 +18,7 @@ class CreateFamilyTree extends CreateRecord
             app(CustomDomainService::class)->prepare($this->record);
         }
         if ($this->record->owner_user_id) {
-            TreeMembership::query()->firstOrCreate([
-                'tree_id' => $this->record->id,
-                'user_id' => $this->record->owner_user_id,
-            ], [
-                'role' => 'owner',
-                'status' => 'approved',
-                'approved_by_user_id' => auth()->id(),
-                'approved_at' => now(),
-            ]);
+            app(OwnerPersonService::class)->ensure($this->record, $this->record->owner);
         }
         if ($this->record->plan_id) {
             Subscription::query()->firstOrCreate([

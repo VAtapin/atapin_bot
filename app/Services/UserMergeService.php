@@ -55,6 +55,18 @@ class UserMergeService
                 $source->refresh();
             }
 
+            $source->memberships()
+                ->with('tree')
+                ->where('role', 'owner')
+                ->whereNull('person_id')
+                ->get()
+                ->each(function ($membership) use ($source): void {
+                    if ($membership->tree) {
+                        app(OwnerPersonService::class)->ensure($membership->tree, $source);
+                    }
+                });
+            $source->refresh();
+
             DB::table('family_trees')->where('owner_user_id', $source->id)->update(['owner_user_id' => $target->id]);
 
             foreach ($source->memberships()->get() as $membership) {
