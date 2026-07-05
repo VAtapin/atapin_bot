@@ -15,7 +15,6 @@ class Plan extends Model
         'storage_limit_mb',
         'people_limit',
         'member_limit',
-        'backup_retention_days',
         'price_monthly',
         'currency',
         'provider_price_reference',

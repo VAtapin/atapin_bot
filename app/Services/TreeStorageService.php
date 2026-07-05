@@ -25,8 +25,10 @@ class TreeStorageService
                     ]);
                 }
             });
-        $bytes = (int) collect(Storage::disk('public')->allFiles("trees/{$tree->id}"))
+        $publicBytes = (int) collect(Storage::disk('public')->allFiles("trees/{$tree->id}"))
             ->sum(fn (string $path): int => Storage::disk('public')->size($path));
+        $backupBytes = $this->backupBytes($tree);
+        $bytes = $publicBytes + $backupBytes;
         $tree->updateQuietly(['storage_used_bytes' => $bytes]);
         $limit = (int) ($tree->plan?->storage_limit_bytes ?? 536870912);
         if (
@@ -36,11 +38,23 @@ class TreeStorageService
         ) {
             app(FamilyNotificationService::class)->notifyManagers(
                 $tree,
-                '⚠️ Семейный архив использовал более 80% доступного места.',
+                $this->storageWarningText($tree, $bytes, $limit, $publicBytes, $backupBytes),
             );
         }
 
         return $bytes;
+    }
+
+    public function backupBytes(FamilyTree $tree): int
+    {
+        $directory = "tree-backups/{$tree->id}";
+
+        if (! Storage::disk('local')->exists($directory)) {
+            return 0;
+        }
+
+        return (int) collect(Storage::disk('local')->allFiles($directory))
+            ->sum(fn (string $path): int => Storage::disk('local')->size($path));
     }
 
     public function ensureCanStore(FamilyTree $tree, int $additionalBytes): void
@@ -53,5 +67,29 @@ class TreeStorageService
                 'photo' => 'Недостаточно места в семейном архиве. Освободите место или измените тариф.',
             ]);
         }
+    }
+
+    private function storageWarningText(FamilyTree $tree, int $used, int $limit, int $publicBytes, int $backupBytes): string
+    {
+        $percent = $limit > 0 ? round($used / $limit * 100) : 0;
+        $advice = $backupBytes > $publicBytes
+            ? 'Совет: удалите старые резервные копии, уменьшите максимум копий или делайте автобэкап реже.'
+            : 'Совет: удалите лишние фотографии/дубли или перейдите на тариф с большим хранилищем.';
+
+        return "⚠️ <b>Место в семейном архиве почти закончилось</b>\n\n"
+            .'Дерево: <b>'.e($tree->name)."</b>\n"
+            .'Использовано: '.e($this->formatBytes($used)).' из '.e($this->formatBytes($limit))." ({$percent}%)\n"
+            .'Файлы и фото: '.e($this->formatBytes($publicBytes))."\n"
+            .'Резервные копии: '.e($this->formatBytes($backupBytes))."\n\n"
+            .e($advice);
+    }
+
+    private function formatBytes(int $bytes): string
+    {
+        if ($bytes >= 1073741824) {
+            return number_format($bytes / 1073741824, 2, ',', ' ').' ГБ';
+        }
+
+        return number_format($bytes / 1048576, 1, ',', ' ').' МБ';
     }
 }

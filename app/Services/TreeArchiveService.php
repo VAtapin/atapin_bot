@@ -74,6 +74,21 @@ class TreeArchiveService
             );
             $size = collect(Storage::disk('local')->allFiles($directory))
                 ->sum(fn (string $path): int => Storage::disk('local')->size($path));
+            $storage = app(TreeStorageService::class);
+            $usedWithBackup = $storage->recalculate($tree->fresh('plan'));
+            $limit = (int) ($tree->fresh('plan')->plan?->storage_limit_bytes ?? 536870912);
+
+            if ($limit > 0 && $usedWithBackup > $limit) {
+                Storage::disk('local')->deleteDirectory($directory);
+                $storage->recalculate($tree->fresh('plan'));
+                $backup->update([
+                    'status' => 'failed',
+                    'error' => 'Недостаточно места для резервной копии. Удалите старые копии, уменьшите их количество или перейдите на тариф с большим хранилищем.',
+                    'completed_at' => now(),
+                ]);
+
+                return $backup->fresh();
+            }
 
             $backup->update([
                 'status' => 'completed',
@@ -84,12 +99,30 @@ class TreeArchiveService
                     ->all(),
                 'completed_at' => now(),
             ]);
+            $this->pruneToLimit($tree);
+            $storage->recalculate($tree->fresh('plan'));
         } catch (Throwable $exception) {
             report($exception);
             $backup->update(['status' => 'failed', 'error' => $exception->getMessage()]);
         }
 
         return $backup->fresh();
+    }
+
+    public function pruneToLimit(FamilyTree $tree): void
+    {
+        $maxCopies = (int) data_get($tree->settings, 'backups.max_copies', 7);
+
+        if ($maxCopies <= 0) {
+            return;
+        }
+
+        $tree->backups()
+            ->where('status', 'completed')
+            ->latest('id')
+            ->get()
+            ->skip($maxCopies)
+            ->each->delete();
     }
 
     public function restore(TreeBackup $backup, ?User $actor = null): void

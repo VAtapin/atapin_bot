@@ -5,9 +5,23 @@
         @if($translation->lead)<p class="section-lead">{{ $translation->lead }}</p>@endif
         <div class="plan-grid">
             @foreach($plans as $plan)
+                @php
+                    $planName = filled($plan->name)
+                        ? $plan->name
+                        : (\Illuminate\Support\Facades\Lang::has("public.plans.{$plan->code}.name")
+                            ? __("public.plans.{$plan->code}.name")
+                            : $plan->code);
+                    $planDescription = filled($plan->description)
+                        ? $plan->description
+                        : (\Illuminate\Support\Facades\Lang::has("public.plans.{$plan->code}.description")
+                            ? __("public.plans.{$plan->code}.description")
+                            : '');
+                @endphp
                 <article class="plan-card">
-                    <h3>{{ \Illuminate\Support\Facades\Lang::has("public.plans.{$plan->code}.name") ? __("public.plans.{$plan->code}.name") : $plan->name }}</h3>
-                    <p>{{ \Illuminate\Support\Facades\Lang::has("public.plans.{$plan->code}.description") ? __("public.plans.{$plan->code}.description") : $plan->description }}</p>
+                    <h3>{{ $planName }}</h3>
+                    @if($planDescription !== '')
+                        <p>{{ $planDescription }}</p>
+                    @endif
                     <strong class="plan-card__price">
                         {{ $plan->price_monthly > 0
                             ? __('public.home.per_month', ['price' => $plan->price_monthly, 'currency' => $plan->currency])

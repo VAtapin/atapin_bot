@@ -72,7 +72,7 @@ return [
         ],
         'privacy_title' => 'Persönlich und deshalb geschützt.',
         'privacy_text' => 'Ihr Stammbaum wird nicht öffentlich veröffentlicht. Sie bestimmen selbst, wer ihn sehen oder bearbeiten darf.',
-        'plans_title' => 'Kostenlos starten',
+        'plans_title' => 'Erstellen Sie Ihren Stammbaum kostenlos',
         'pricing_kicker' => 'Ohne Risiko und Zeitdruck',
         'plans_lead' => 'Erstellen Sie Ihren ersten Stammbaum und testen Sie die wichtigsten Funktionen. Wenn das Archiv wächst, wählen Sie einen passenden Tarif.',
         'free' => 'Kostenlos',

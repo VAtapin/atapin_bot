@@ -56,7 +56,6 @@ class PlanResource extends Resource
                 ->required(),
             TextInput::make('people_limit')->label('Лимит людей')->numeric()->required(),
             TextInput::make('member_limit')->label('Лимит участников')->numeric()->required(),
-            TextInput::make('backup_retention_days')->label('Хранение копий, дней')->numeric()->required(),
             Toggle::make('custom_bot')->label('Собственный бот'),
             Toggle::make('custom_domain')->label('Собственный домен'),
             Toggle::make('is_active')->label('Доступен')->default(true),

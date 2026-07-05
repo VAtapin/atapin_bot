@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 class TreeBackup extends Model
 {
@@ -33,6 +34,16 @@ class TreeBackup extends Model
         static::deleting(function (TreeBackup $backup): void {
             if ($backup->path) {
                 Storage::disk('local')->deleteDirectory(dirname($backup->path));
+            }
+        });
+
+        static::deleted(function (TreeBackup $backup): void {
+            try {
+                if ($backup->tree) {
+                    app(\App\Services\TreeStorageService::class)->recalculate($backup->tree->fresh('plan'));
+                }
+            } catch (Throwable $exception) {
+                report($exception);
             }
         });
     }

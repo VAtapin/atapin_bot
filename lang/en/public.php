@@ -72,7 +72,7 @@ return [
         ],
         'privacy_title' => 'It is personal. That is why it stays private.',
         'privacy_text' => 'Your family tree is not published openly. The owner decides who can join, view information or edit the archive.',
-        'plans_title' => 'Start for free',
+        'plans_title' => 'Create your family tree for free',
         'pricing_kicker' => 'No risk and no rush',
         'plans_lead' => 'Create your first tree, add relatives and try the core features. Choose a suitable plan as your family archive grows.',
         'free' => 'Free',

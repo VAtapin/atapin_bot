@@ -205,6 +205,35 @@ class EditTreeProfile extends EditTenantProfile
                         ->label('Доставлять поздравления в Telegram')
                         ->default(true),
                 ]),
+            Section::make('Резервные копии')
+                ->id('backups')
+                ->description('Настройки автоматических копий. Не ставьте слишком частый бэкап, если дерево редко меняется: каждая копия хранит данные и фотографии и занимает место в общем лимите тарифа.')
+                ->schema([
+                    Toggle::make('settings.backups.auto_enabled')
+                        ->label('Автоматически создавать резервные копии')
+                        ->default(true),
+                    TextInput::make('settings.backups.frequency_days')
+                        ->label('Частота автобэкапа, раз в X дней')
+                        ->numeric()
+                        ->minValue(1)
+                        ->maxValue(365)
+                        ->default(1)
+                        ->helperText('1 = ежедневно, 7 = раз в неделю, 30 = примерно раз в месяц. Чем чаще копии, тем быстрее расходуется место.'),
+                    TextInput::make('settings.backups.max_copies')
+                        ->label('Максимум резервных копий')
+                        ->numeric()
+                        ->minValue(0)
+                        ->maxValue(100)
+                        ->default(7)
+                        ->helperText('0 = без ограничения. Старые копии удаляются только если превышено это количество. По возрасту копии больше не удаляются.'),
+                    Textarea::make('_backup_storage_help')
+                        ->label('Как считается место')
+                        ->default('В общий лимит тарифа входят фотографии, файлы дерева, семейный герб и резервные копии. Если место заканчивается, сначала проверьте старые копии: можно уменьшить их количество или делать автобэкап реже.')
+                        ->disabled()
+                        ->dehydrated(false)
+                        ->rows(4)
+                        ->columnSpanFull(),
+                ])->columns(3),
         ]);
     }
 
