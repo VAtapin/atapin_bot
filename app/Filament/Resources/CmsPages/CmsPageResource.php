@@ -15,6 +15,8 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
@@ -41,35 +43,58 @@ class CmsPageResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            Select::make('locale')->label('Язык')->options(['ru' => 'Русский', 'de' => 'Deutsch', 'en' => 'English', 'uk' => 'Українська'])->required(),
-            TextInput::make('slug')
-                ->label('Адрес')
-                ->required()
-                ->unique(
-                    ignoreRecord: true,
-                    modifyRuleUsing: fn (Unique $rule, callable $get) => $rule->where('locale', $get('locale')),
-                ),
-            TextInput::make('title')->label('Заголовок')->required(),
-            TextInput::make('meta_title')->label('SEO-заголовок'),
-            Textarea::make('meta_description')->label('SEO-описание')->rows(2),
-            FileUpload::make('og_image_path')
-                ->label('Изображение OpenGraph')
-                ->image()
-                ->disk('public')
-                ->directory('cms/og')
-                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
-                ->maxSize(5120)
-                ->helperText('Рекомендуемый размер 1200×630. Если не указано, используется общее изображение сайта.'),
-            RichEditor::make('content')
-                ->label('Содержимое')
-                ->helperText('Можно использовать заголовки, списки, ссылки, цитаты и изображения. Опасный HTML удаляется автоматически.')
-                ->required()
+            Tabs::make('Редактирование страницы')
+                ->tabs([
+                    Tab::make('Основное')
+                        ->schema([
+                            Select::make('locale')
+                                ->label('Язык')
+                                ->options(['ru' => 'Русский', 'de' => 'Deutsch', 'en' => 'English', 'uk' => 'Українська'])
+                                ->required()
+                                ->helperText('Эта запись публикуется только на выбранном языке. Для другой языковой ссылки создайте отдельную страницу/перевод.'),
+                            TextInput::make('slug')
+                                ->label('Адрес')
+                                ->required()
+                                ->unique(
+                                    ignoreRecord: true,
+                                    modifyRuleUsing: fn (Unique $rule, callable $get) => $rule->where('locale', $get('locale')),
+                                )
+                                ->helperText('Часть адреса без / и без домена. Для разных языков лучше использовать понятные отдельные адреса.'),
+                            TextInput::make('title')->label('Заголовок')->required(),
+                            Select::make('status')->label('Состояние')->options([
+                                'draft' => 'Черновик',
+                                'published' => 'Опубликована',
+                            ])->default('published')->required(),
+                            TextInput::make('sort_order')->label('Порядок')->numeric()->default(0),
+                        ]),
+                    Tab::make('Контент')
+                        ->schema([
+                            RichEditor::make('content')
+                                ->label('Содержимое')
+                                ->fileAttachments(true)
+                                ->fileAttachmentsDisk('public')
+                                ->fileAttachmentsDirectory('cms/content')
+                                ->fileAttachmentsAcceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
+                                ->fileAttachmentsMaxSize(5120)
+                                ->helperText('Можно использовать заголовки, списки, ссылки, цитаты и изображения. Опасный HTML удаляется автоматически.')
+                                ->required()
+                                ->columnSpanFull(),
+                        ]),
+                    Tab::make('SEO и соцсети')
+                        ->schema([
+                            TextInput::make('meta_title')->label('SEO-заголовок'),
+                            Textarea::make('meta_description')->label('SEO-описание')->rows(2),
+                            FileUpload::make('og_image_path')
+                                ->label('Изображение OpenGraph')
+                                ->image()
+                                ->disk('public')
+                                ->directory('cms/og')
+                                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
+                                ->maxSize(5120)
+                                ->helperText('Рекомендуемый размер 1200×630. Если не указано, используется общее изображение сайта.'),
+                        ]),
+                ])
                 ->columnSpanFull(),
-            Select::make('status')->label('Состояние')->options([
-                'draft' => 'Черновик',
-                'published' => 'Опубликована',
-            ])->default('published')->required(),
-            TextInput::make('sort_order')->label('Порядок')->numeric()->default(0),
         ]);
     }
 
