@@ -15,6 +15,11 @@ class BillingController extends Controller
     {
         abort_unless($request->user()?->ownsTree($tree), 403);
         abort_unless($plan->is_active, 404);
+        if ($plan->isFree()) {
+            return redirect('/manage/'.$tree->slug.'/subscriptions')
+                ->with('status', 'Бесплатный тариф уже доступен без оплаты. Для больших лимитов выберите платный тариф.');
+        }
+
         app(AnalyticsService::class)->record(
             'view_plan',
             $request,

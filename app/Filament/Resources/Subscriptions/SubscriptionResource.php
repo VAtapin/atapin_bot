@@ -65,6 +65,14 @@ class SubscriptionResource extends Resource
         return $table->columns([
             TextColumn::make('tree.name')->label('Дерево'),
             TextColumn::make('plan.name')->label('Тариф'),
+            TextColumn::make('plan.people_limit')
+                ->label('Лимит людей')
+                ->numeric(),
+            TextColumn::make('plan.storage_limit_bytes')
+                ->label('Хранилище')
+                ->formatStateUsing(fn (?int $state): string => $state && $state >= 1073741824
+                    ? number_format($state / 1073741824, 1, ',', ' ').' ГБ'
+                    : number_format(((int) $state) / 1048576, 0, ',', ' ').' МБ'),
             TextColumn::make('status')->label('Статус')->badge()
                 ->formatStateUsing(fn (string $state): string => match ($state) {
                     'trial' => 'Пробный период',
@@ -76,7 +84,10 @@ class SubscriptionResource extends Resource
                     default => $state,
                 }),
             TextColumn::make('next_billing_at')->label('Следующая оплата')->dateTime('d.m.Y'),
-            TextColumn::make('amount')->label('Сумма'),
+            TextColumn::make('amount')->label('Сумма')
+                ->formatStateUsing(fn (mixed $state, Subscription $record): string => (float) $record->amount <= 0.0
+                    ? 'Бесплатно'
+                    : number_format((float) $record->amount, 2, ',', ' ').' '.$record->currency),
             TextColumn::make('ends_at')->label('До')->dateTime('d.m.Y'),
         ])->recordActions([
             EditAction::make()->visible(fn (): bool => (bool) auth()->user()?->is_super_admin),
@@ -101,10 +112,14 @@ class SubscriptionResource extends Resource
                     && ! $record->archived_at)
                 ->action(fn (Subscription $record) => $record->update(['archived_at' => now()])),
             Action::make('pay')
-                ->label('Оплатить / продлить')
+                ->label(fn (Subscription $record): string => $record->status === 'past_due'
+                    ? 'Оплатить задолженность'
+                    : 'Повторить оплату')
                 ->icon(Heroicon::OutlinedCreditCard)
-                ->visible(fn (): bool => ! auth()->user()?->is_super_admin
-                    && PlatformSetting::value('billing_enabled', false))
+                ->visible(fn (Subscription $record): bool => ! auth()->user()?->is_super_admin
+                    && PlatformSetting::value('billing_enabled', false)
+                    && $record->plan?->isPaid()
+                    && ! in_array($record->status, ['active', 'trial'], true))
                 ->url(fn (Subscription $record): string => route('billing.checkout', [
                     'tree' => $record->tree,
                     'plan' => $record->plan,

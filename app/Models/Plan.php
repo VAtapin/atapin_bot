@@ -45,6 +45,16 @@ class Plan extends Model
         $this->attributes['storage_limit_bytes'] = max(1, (int) $value) * 1048576;
     }
 
+    public function isFree(): bool
+    {
+        return (float) $this->price_monthly <= 0.0;
+    }
+
+    public function isPaid(): bool
+    {
+        return ! $this->isFree();
+    }
+
     public function trees(): HasMany
     {
         return $this->hasMany(FamilyTree::class);

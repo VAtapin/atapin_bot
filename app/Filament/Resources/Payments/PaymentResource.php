@@ -41,10 +41,25 @@ class PaymentResource extends Resource
                 TextColumn::make('provider')->label('Провайдер')->badge(),
                 TextColumn::make('provider_reference')->label('Номер')->copyable(),
                 TextColumn::make('description')->label('За что')->wrap(),
-                TextColumn::make('status')->label('Статус')->badge(),
-                TextColumn::make('amount')->label('Сумма')->money(
-                    fn (Payment $record): string => $record->currency,
-                ),
+                TextColumn::make('status')->label('Статус')->badge()
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'pending' => 'Оплата не завершена',
+                        'paid' => 'Оплачено',
+                        'failed' => 'Отменено / ошибка',
+                        'refunded' => 'Возврат',
+                        default => $state,
+                    })
+                    ->color(fn (string $state): string => match ($state) {
+                        'pending' => 'warning',
+                        'paid' => 'success',
+                        'failed' => 'gray',
+                        'refunded' => 'danger',
+                        default => 'gray',
+                    }),
+                TextColumn::make('amount')->label('Сумма')
+                    ->formatStateUsing(fn (mixed $state, Payment $record): string => (float) $record->amount <= 0.0
+                        ? 'Бесплатно'
+                        : number_format((float) $record->amount, 2, ',', ' ').' '.$record->currency),
                 TextColumn::make('paid_at')->label('Оплачен')->dateTime('d.m.Y H:i'),
                 TextColumn::make('created_at')->label('Создан')->dateTime('d.m.Y H:i'),
             ])
@@ -70,6 +85,21 @@ class PaymentResource extends Resource
                             $record->idempotency_key,
                         );
                         Notification::make()->title('Оплата подтверждена')->success()->send();
+                    }),
+                Action::make('cancel_pending')
+                    ->label('Отменить попытку')
+                    ->color('gray')
+                    ->visible(fn (Payment $record): bool => $record->status === 'pending'
+                        && (auth()->user()?->is_super_admin || auth()->user()?->ownsTree($record->tree)))
+                    ->requiresConfirmation()
+                    ->modalDescription('Запись останется в истории, но больше не будет выглядеть как ожидающая оплата.')
+                    ->action(function (Payment $record): void {
+                        $record->update([
+                            'status' => 'failed',
+                            'failed_at' => now(),
+                        ]);
+
+                        Notification::make()->title('Попытка оплаты отменена')->success()->send();
                     }),
                 Action::make('refund')
                     ->label('Отметить возврат')

@@ -17,6 +17,8 @@ class BillingService
     public function checkout(FamilyTree $tree, Plan $plan, User $user): RedirectResponse
     {
         abort_unless(PlatformSetting::value('billing_enabled', false), 503, 'Онлайн-платежи ещё не настроены.');
+        abort_if($plan->isFree(), 422, 'Бесплатный тариф не требует оплаты. Выберите платный тариф, если нужны большие лимиты.');
+
         $provider = (string) PlatformSetting::value('billing_provider', 'manual');
         $key = (string) Str::uuid();
 
