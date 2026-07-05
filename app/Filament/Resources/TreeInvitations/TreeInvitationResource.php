@@ -72,6 +72,9 @@ class TreeInvitationResource extends Resource
                 ->label('Ссылка')
                 ->placeholder('Нужно перевыпустить')
                 ->copyable()
+                ->copyableState(fn (TreeInvitation $record): ?string => $record->invitation_url)
+                ->copyMessage('Полная ссылка скопирована')
+                ->tooltip(fn (TreeInvitation $record): ?string => $record->invitation_url)
                 ->limit(30),
             TextColumn::make('revoked_at')->label('Отозвано')->dateTime('d.m.Y H:i'),
         ])->recordActions([
