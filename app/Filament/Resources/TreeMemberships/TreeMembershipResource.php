@@ -25,6 +25,8 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class TreeMembershipResource extends Resource
 {
@@ -211,14 +213,32 @@ class TreeMembershipResource extends Resource
                     $sourceName = $sourceUser?->name ?: $sourceUser?->email ?: 'дубль';
                     $targetName = $targetUser?->name ?: $targetUser?->email ?: 'основная запись';
 
-                    app(UserMergeService::class)->merge($sourceUser, $targetUser, auth()->user());
+                    try {
+                        app(UserMergeService::class)->merge($sourceUser, $targetUser, auth()->user());
 
-                    Notification::make()
-                        ->title('Дубли объединены')
-                        ->body("{$sourceName} объединён с {$targetName}. Способы входа, Telegram и доступы перенесены к основной записи.")
-                        ->success()
-                        ->persistent()
-                        ->send();
+                        Notification::make()
+                            ->title('Дубли объединены')
+                            ->body("{$sourceName} объединён с {$targetName}. Способы входа, Telegram и доступы перенесены к основной записи.")
+                            ->success()
+                            ->persistent()
+                            ->send();
+                    } catch (ValidationException $exception) {
+                        Notification::make()
+                            ->title('Не удалось объединить дубли')
+                            ->body(collect($exception->errors())->flatten()->join("\n"))
+                            ->danger()
+                            ->persistent()
+                            ->send();
+                    } catch (Throwable $exception) {
+                        report($exception);
+
+                        Notification::make()
+                            ->title('Не удалось объединить дубли')
+                            ->body($exception->getMessage() ?: 'Сервер не вернул текст ошибки. Подробности записаны в laravel.log.')
+                            ->danger()
+                            ->persistent()
+                            ->send();
+                    }
                 }),
             EditAction::make()
                 ->iconButton()
