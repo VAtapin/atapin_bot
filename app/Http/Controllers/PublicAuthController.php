@@ -8,6 +8,7 @@ use App\Models\TreeMembership;
 use App\Models\User;
 use App\Services\AnalyticsService;
 use App\Services\AuthRedirector;
+use App\Services\TreeAccessService;
 use App\Support\CurrentTree;
 use App\Support\SafeReturnUrl;
 use Illuminate\Http\RedirectResponse;
@@ -96,6 +97,20 @@ class PublicAuthController extends Controller
         RateLimiter::clear($key);
         $request->session()->regenerate();
         $request->session()->put('family_user_id', Auth::id());
+
+        if ($request->session()->has('family_invitation_token')) {
+            try {
+                $membership = app(TreeAccessService::class)->acceptInvitation(
+                    $request->user(),
+                    (string) $request->session()->pull('family_invitation_token'),
+                );
+                $tree = $membership->tree;
+                $request->session()->put('family_tree_id', $tree->id);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
         $analytics->linkUser($request, $request->user());
         $analytics->record('login', $request, $request->user(), $tree, [
             'method' => 'password',
@@ -123,12 +138,16 @@ class PublicAuthController extends Controller
 
     public function destroy(Request $request, AnalyticsService $analytics): RedirectResponse
     {
-        $analytics->record('logout', $request, $request->user());
+        try {
+            $analytics->record('logout', $request, $request->user());
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('home');
+        return redirect()->route('home', ['locale' => app()->getLocale()]);
     }
 
     private function requestedTree(Request $request): ?FamilyTree

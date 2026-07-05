@@ -685,8 +685,8 @@ const relationLabels = {
 
 function renderList(data) {
     const list = $('#people-list');
-    list.innerHTML = data.people.length
-        ? data.people.map((person) => `
+    const people = new Map(data.people.map((person) => [String(person.id), person]));
+    const row = (person) => `
             <button class="person-row" type="button" data-person-id="${person.id}">
                 <span class="person-avatar-wrap ${person.death_date ? 'is-deceased' : ''}">
                     ${person.photo_url
@@ -707,7 +707,23 @@ function renderList(data) {
                 </span>
                 <span class="person-row-chevron">›</span>
             </button>
-        `).join('')
+        `;
+    const groups = (data.list_groups ?? [])
+        .map((group) => ({
+            ...group,
+            people: group.person_ids.map((id) => people.get(String(id))).filter(Boolean),
+        }))
+        .filter((group) => group.people.length);
+
+    list.innerHTML = data.people.length
+        ? (groups.length
+            ? groups.map((group) => `
+                <section class="family-list-group">
+                    <h3>${escapeHtml(group.label)}</h3>
+                    ${group.people.map(row).join('')}
+                </section>
+            `).join('')
+            : data.people.map(row).join(''))
         : `<p class="empty-list">${escapeHtml(t('empty_filter'))}</p>`;
     list.querySelectorAll('[data-person-id]').forEach((row) => {
         row.addEventListener('click', () => showPerson(row.dataset.personId));

@@ -35,6 +35,7 @@ class VerifyTelegramMiniApp
     {
         $tree = $this->requestedTree($request);
         $initData = (string) ($request->header('X-Telegram-Init-Data') ?: $request->query('initData', ''));
+        $tree ??= $this->treeFromTelegramContext($initData);
         $vkLaunchParams = (string) $request->header('X-VK-Launch-Params');
         $telegramUser = null;
         $familyUser = $request->user()
@@ -325,6 +326,40 @@ class VerifyTelegramMiniApp
                 ->whereKey($request->session()->get('family_tree_id'))
                 ->where('status', 'active')
                 ->first()
+            : null;
+    }
+
+    /**
+     * The Main App can be opened from Telegram without a tree slug in its URL.
+     * Its signed start_param contains the tree id. We may use the untrusted id
+     * only to select a candidate bot token; validate() still verifies the full
+     * initData signature with that token before any identity is accepted.
+     */
+    private function treeFromTelegramContext(string $initData): ?FamilyTree
+    {
+        if ($initData === '') {
+            return null;
+        }
+
+        parse_str($initData, $data);
+        $startParameter = (string) ($data['start_param'] ?? '');
+
+        if (preg_match('/^tree_(\d+)_/', $startParameter, $matches)) {
+            return FamilyTree::query()
+                ->whereKey((int) $matches[1])
+                ->where('status', 'active')
+                ->first();
+        }
+
+        $user = json_decode((string) ($data['user'] ?? ''), true);
+        $telegramId = is_array($user) ? (int) ($user['id'] ?? 0) : 0;
+
+        return $telegramId > 0
+            ? TelegramUser::query()
+                ->where('telegram_user_id', $telegramId)
+                ->with('currentTree')
+                ->first()
+                ?->currentTree
             : null;
     }
 }

@@ -244,6 +244,7 @@ class MiniAppController extends Controller
             ->whereIn('id', $relatedIds)
             ->get()
             ->keyBy('id');
+        $listGroups = $this->listGroups($people, $allParentChild, $allPartnerships, $peopleById);
 
         return response()->json([
             'people' => $people->map(fn (Person $person): array => [
@@ -301,6 +302,7 @@ class MiniAppController extends Controller
             'focus_id' => $focusId ? (string) $focusId : null,
             'total_people' => $totalPeople,
             'shown_people' => $people->count(),
+            'list_groups' => $listGroups,
             'filters' => [
                 'cities' => app(TreeCacheService::class)->remember(
                     $treeId,
@@ -324,6 +326,70 @@ class MiniAppController extends Controller
         ]);
     }
 
+    private function listGroups($people, $parentChild, $partnerships, $peopleById): array
+    {
+        $visible = $people->keyBy('id');
+        $knownPeople = $visible->union($peopleById);
+        $parentsByChild = $parentChild
+            ->groupBy('child_id')
+            ->map(fn ($links) => $links->pluck('parent_id')->map('intval')->unique()->sort()->values());
+        $groups = [];
+
+        foreach ($people as $person) {
+            $parentIds = $parentsByChild->get($person->id, collect());
+
+            if ($parentIds->isNotEmpty()) {
+                $key = 'parents:'.$parentIds->implode('-');
+                $label = $parentIds
+                    ->map(fn (int $id): ?string => $knownPeople->get($id)?->full_name)
+                    ->filter()
+                    ->implode(' · ');
+            } else {
+                $partnership = $partnerships
+                    ->filter(fn ($link): bool => (int) $link->partner_one_id === (int) $person->id
+                        || (int) $link->partner_two_id === (int) $person->id)
+                    ->sortByDesc(fn ($link): string => ($link->ended_at ? '0' : '1')
+                        .($link->started_at ?? '0000-00-00'))
+                    ->first();
+
+                if ($partnership) {
+                    $partnerIds = collect([
+                        (int) $partnership->partner_one_id,
+                        (int) $partnership->partner_two_id,
+                    ])->sort()->values();
+                    $key = 'couple:'.$partnerIds->implode('-');
+                    $label = $partnerIds
+                        ->map(fn (int $id): ?string => $knownPeople->get($id)?->full_name)
+                        ->filter()
+                        ->implode(' · ');
+                } else {
+                    $key = 'person:'.$person->id;
+                    $label = $person->full_name;
+                }
+            }
+
+            $groups[$key] ??= ['label' => $label, 'people' => []];
+            $groups[$key]['people'][] = $person;
+        }
+
+        return collect($groups)
+            ->map(function (array $group): array {
+                $sorted = collect($group['people'])
+                    ->sortBy(fn (Person $person): string => $person->birth_date?->format('Y-m-d')
+                        ?: '9999-12-31')
+                    ->values();
+
+                return [
+                    'label' => $group['label'],
+                    'person_ids' => $sorted->map(fn (Person $person): string => (string) $person->id)->all(),
+                    'oldest_birth_date' => $sorted->first()?->birth_date?->format('Y-m-d'),
+                ];
+            })
+            ->sortBy(fn (array $group): string => $group['oldest_birth_date'] ?: '9999-12-31')
+            ->values()
+            ->all();
+    }
+
     public function gallery(Request $request): JsonResponse
     {
         $perPage = min(max($request->integer('per_page', 36), 12), 60);
@@ -331,7 +397,9 @@ class MiniAppController extends Controller
             ->with(['person', 'album'])
             ->whereHas('person', fn (Builder $query) => $query
                 ->where('is_published', true)
-                ->orWhere('gedcom_id', 'I88888888'))
+                ->where(fn (Builder $query) => $query
+                    ->whereNull('gedcom_id')
+                    ->orWhere('gedcom_id', '!=', 'I88888888')))
             ->latest('taken_at')
             ->latest('id')
             ->cursorPaginate($perPage);
@@ -350,8 +418,6 @@ class MiniAppController extends Controller
                 ->first())
             ->filter(fn ($photo): bool => filled($photo->url))
             ->map(function ($photo): array {
-                $isUnassociated = $photo->person->gedcom_id === 'I88888888';
-
                 return [
                     'id' => (string) $photo->id,
                     'url' => $photo->url,
@@ -359,11 +425,9 @@ class MiniAppController extends Controller
                     'title' => $photo->title,
                     'description' => $photo->description,
                     'taken_at' => $photo->taken_at?->toDateString(),
-                    'person_id' => $isUnassociated ? null : (string) $photo->person_id,
-                    'person_name' => $isUnassociated
-                        ? ($photo->title ?: __('miniapp.unassociated_photo'))
-                        : $photo->person->full_name,
-                    'is_associated' => ! $isUnassociated,
+                    'person_id' => (string) $photo->person_id,
+                    'person_name' => $photo->person->full_name,
+                    'is_associated' => true,
                 ];
             })
             ->values();

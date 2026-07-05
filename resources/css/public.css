@@ -799,6 +799,36 @@ input:focus, textarea:focus, select:focus {
 .error-card h1 { font: 700 34px/1.15 var(--public-serif); }
 .invitation-card canvas { max-width: 100%; height: auto; }
 .invitation-url { overflow-wrap: anywhere; color: var(--public-accent-dark); }
+.public-main .invitation-card {
+    width: min(760px, calc(100% - 40px));
+    text-align: left;
+}
+.public-main .invitation-card > .eyebrow,
+.public-main .invitation-card > h1,
+.public-main .invitation-card > p {
+    text-align: center;
+}
+.button--wide { display: flex; width: 100%; justify-content: center; }
+.form-divider {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 22px 0;
+    color: var(--public-muted);
+}
+.form-divider::before,
+.form-divider::after {
+    height: 1px;
+    flex: 1;
+    background: var(--public-line);
+    content: "";
+}
+.invitation-person {
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: var(--public-soft);
+}
+.auth-note { margin: 22px 0 0; }
 .error-card__icon { font-size: 44px; }
 .error-card__actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
 .consent-banner {

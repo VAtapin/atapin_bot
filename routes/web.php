@@ -116,7 +116,10 @@ Route::get('/access/pending', function (Request $request) {
 
     return view('public.pending', compact('tree'));
 })->name('access.pending');
-Route::get('/invite/{token}', TreeInvitationController::class)->name('tree.invitation');
+Route::get('/invite/{token}', [TreeInvitationController::class, 'show'])->name('tree.invitation');
+Route::post('/invite/{token}', [TreeInvitationController::class, 'store'])
+    ->middleware('throttle:10,1')
+    ->name('tree.invitation.store');
 Route::get('/invitations/{invitation}/qr', InvitationQrController::class)
     ->middleware('auth')
     ->name('tree.invitation.qr');

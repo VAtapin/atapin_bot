@@ -481,7 +481,11 @@ class ImportGedcom extends Command
                 ],
             );
             $person->save();
-            $this->syncPersonPhotos($person, $source['photos'], $gedcomId);
+            if ($this->isUnassociatedPhotosRecord($gedcomId, $source)) {
+                $person->photos()->get()->each->delete();
+            } else {
+                $this->syncPersonPhotos($person, $source['photos'], $gedcomId);
+            }
 
             if ($person->trashed()) {
                 $person->restore();
