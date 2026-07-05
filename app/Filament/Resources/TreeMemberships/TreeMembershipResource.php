@@ -160,10 +160,10 @@ class TreeMembershipResource extends Resource
             Action::make('merge_user')
                 ->label(fn (TreeMembership $record): string => $record->role === 'owner'
                     ? 'Присоединить дубль к владельцу'
-                    : 'Объединить дубль')
+                    : 'Слить дубль в основной аккаунт')
                 ->tooltip(fn (TreeMembership $record): string => $record->role === 'owner'
-                    ? 'Присоединить дубль к владельцу'
-                    : 'Объединить дубль')
+                    ? 'Выбрать дубль и присоединить его к владельцу'
+                    : 'Слить этот дубль в владельца или другой основной аккаунт')
                 ->icon(Heroicon::OutlinedArrowsPointingIn)
                 ->iconButton()
                 ->color('warning')
@@ -180,12 +180,16 @@ class TreeMembershipResource extends Resource
                         ->options(fn (TreeMembership $record): array => $record->role === 'owner'
                             ? static::mergeSourceOptions($record)
                             : static::mergeTargetOptions($record))
+                        ->default(fn (TreeMembership $record): ?int => $record->role === 'owner'
+                            ? null
+                            : static::preferredMergeTargetUserId($record))
                         ->searchable()
+                        ->preload()
                         ->required(),
                 ])
                 ->modalHeading(fn (TreeMembership $record): string => $record->role === 'owner'
                     ? 'Присоединить дубль к владельцу'
-                    : 'Объединить дубль внутри этого дерева')
+                    : 'Слить этот дубль в основной аккаунт')
                 ->modalDescription(fn (TreeMembership $record): string => $record->role === 'owner'
                     ? 'Это объединяет только учётные записи доступа, а не карточки людей в родословной. Все способы входа выбранного дубля перейдут к владельцу дерева.'
                     : 'Это объединяет только учётные записи доступа, а не карточки людей в родословной. Все способы входа текущего дубля перейдут к выбранной основной записи.')
@@ -320,8 +324,20 @@ class TreeMembershipResource extends Resource
 
         $options = [];
 
+        $ownerMembership = TreeMembership::query()
+            ->with(['user', 'person'])
+            ->where('tree_id', $record->tree_id)
+            ->where('role', 'owner')
+            ->where('user_id', '!=', $record->user_id)
+            ->whereNotNull('user_id')
+            ->first();
+
+        if ($ownerMembership) {
+            $options[$ownerMembership->user_id] = static::membershipMergeLabel($ownerMembership);
+        }
+
         foreach ($memberships as $membership) {
-            $options[$membership->user_id] = static::membershipMergeLabel($membership);
+            $options[$membership->user_id] ??= static::membershipMergeLabel($membership);
         }
 
         $knownUserIds = $memberships->pluck('user_id')->push($record->user_id)->filter()->unique();
@@ -343,6 +359,26 @@ class TreeMembershipResource extends Resource
         }
 
         return $options;
+    }
+
+    public static function preferredMergeTargetUserId(TreeMembership $record): ?int
+    {
+        if ($record->role === 'owner') {
+            return null;
+        }
+
+        $ownerUserId = $record->tree()->value('owner_user_id');
+        if (! $ownerUserId || (int) $ownerUserId === (int) $record->user_id) {
+            return null;
+        }
+
+        $ownerIsAvailable = TreeMembership::query()
+            ->where('tree_id', $record->tree_id)
+            ->where('user_id', $ownerUserId)
+            ->whereHas('user', fn ($query) => $query->whereNull('merged_at'))
+            ->exists();
+
+        return $ownerIsAvailable ? (int) $ownerUserId : null;
     }
 
     public static function mergeSourceOptions(TreeMembership $record): array
