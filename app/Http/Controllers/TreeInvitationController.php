@@ -19,7 +19,7 @@ class TreeInvitationController extends Controller
 {
     public function show(Request $request, string $token): View|RedirectResponse
     {
-        $invitation = $this->invitation($token);
+        $invitation = $this->invitation($token, $request->user());
 
         $request->session()->put('family_invitation_token', $token);
         $request->session()->put('family_tree_id', $invitation->tree_id);
@@ -101,7 +101,7 @@ class TreeInvitationController extends Controller
         return app(AuthRedirector::class)->redirect($user, $membership->tree);
     }
 
-    private function invitation(string $token): TreeInvitation
+    private function invitation(string $token, ?User $user = null): TreeInvitation
     {
         abort_unless((bool) preg_match('/^[a-f0-9]{64}$/', $token), 404);
 
@@ -109,7 +109,15 @@ class TreeInvitationController extends Controller
             ->with(['tree', 'person'])
             ->where('token_hash', hash('sha256', $token))
             ->firstOrFail();
-        abort_unless($invitation->isUsable(), 410, __('public.invitation.expired'));
+        $alreadyHasAccess = $user && $user->memberships()
+            ->where('tree_id', $invitation->tree_id)
+            ->where('status', 'approved')
+            ->exists();
+        abort_unless(
+            $invitation->isUsable() || $alreadyHasAccess,
+            410,
+            __('public.invitation.expired'),
+        );
 
         return $invitation;
     }

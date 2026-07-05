@@ -27,17 +27,56 @@ class TreeAccessService
                 ->lockForUpdate()
                 ->first();
 
-            if (! $invitation || ! $invitation->isUsable()) {
+            if (! $invitation) {
                 throw ValidationException::withMessages([
                     'invitation' => 'Приглашение недействительно или уже использовано.',
                 ]);
             }
 
-            $membership = TreeMembership::query()->firstOrNew([
+            $membership = TreeMembership::query()->where([
+                'tree_id' => $invitation->tree_id,
+                'user_id' => $user->id,
+            ])->first();
+
+            $rank = ['guest' => 0, 'member' => 1, 'moderator' => 2, 'owner' => 3];
+
+            if ($membership?->status === 'approved') {
+                // Owners and moderators commonly open links to test them.
+                // Their visit must never spend somebody else's invitation.
+                if ($user->canManageTree($invitation->tree)) {
+                    return $membership;
+                }
+
+                $alreadyHasRole = ($rank[$membership->role] ?? -1)
+                    >= ($rank[$invitation->role] ?? 0);
+                $alreadyLinked = ! $invitation->person_id
+                    || (int) $membership->person_id === (int) $invitation->person_id;
+
+                if ($alreadyHasRole && $alreadyLinked) {
+                    return $membership;
+                }
+
+                if (
+                    $membership->person_id
+                    && $invitation->person_id
+                    && (int) $membership->person_id !== (int) $invitation->person_id
+                ) {
+                    throw ValidationException::withMessages([
+                        'invitation' => 'Приглашение предназначено для другого человека.',
+                    ]);
+                }
+            }
+
+            if (! $invitation->isUsable()) {
+                throw ValidationException::withMessages([
+                    'invitation' => 'Приглашение недействительно или уже использовано.',
+                ]);
+            }
+
+            $membership ??= new TreeMembership([
                 'tree_id' => $invitation->tree_id,
                 'user_id' => $user->id,
             ]);
-            $rank = ['guest' => 0, 'member' => 1, 'moderator' => 2, 'owner' => 3];
             $role = ($rank[$membership->role] ?? -1) >= ($rank[$invitation->role] ?? 0)
                 ? $membership->role
                 : $invitation->role;

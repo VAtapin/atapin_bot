@@ -21,8 +21,14 @@ class FamilySelfServiceController extends Controller
         $person = $this->person($request);
         $children = $person->children()->get();
         $childIds = $children->pluck('id');
+        $grandchildIds = ParentChild::query()
+            ->whereIn('parent_id', $childIds)
+            ->pluck('child_id')
+            ->unique();
         $grandchildren = Person::query()
-            ->whereHas('parents', fn ($query) => $query->whereIn('people.id', $childIds))
+            ->whereIn('id', $grandchildIds)
+            ->whereKeyNot($person->id)
+            ->whereNotIn('id', $childIds)
             ->get();
         $childSpouses = Person::query()
             ->whereIn('id', Partnership::query()
@@ -130,9 +136,10 @@ class FamilySelfServiceController extends Controller
         ], 201);
     }
 
-    public function updateRelative(Request $request, Person $person): JsonResponse
+    public function updateRelative(Request $request, int|string $person): JsonResponse
     {
         $owner = $this->editablePerson($request);
+        $person = Person::query()->findOrFail((int) $person);
         abort_unless($this->isEditableRelative($owner, $person), 403);
         $person->update($request->validate($this->personRules(false)));
 
@@ -142,9 +149,10 @@ class FamilySelfServiceController extends Controller
         ]);
     }
 
-    public function destroyRelative(Request $request, Person $person): JsonResponse
+    public function destroyRelative(Request $request, int|string $person): JsonResponse
     {
         $owner = $this->editablePerson($request);
+        $person = Person::query()->findOrFail((int) $person);
         abort_unless($this->isEditableRelative($owner, $person), 403);
 
         ParentChild::query()
@@ -189,9 +197,10 @@ class FamilySelfServiceController extends Controller
         return response()->json(['message' => 'Альбом создан.', 'album' => $album], 201);
     }
 
-    public function updateAlbum(Request $request, PhotoAlbum $album): JsonResponse
+    public function updateAlbum(Request $request, int|string $album): JsonResponse
     {
         $person = $this->editablePerson($request);
+        $album = PhotoAlbum::query()->findOrFail((int) $album);
         abort_unless($album->person_id === $person->id, 403);
         $album->update($request->validate([
             'title' => ['required', 'string', 'max:255'],
@@ -201,9 +210,10 @@ class FamilySelfServiceController extends Controller
         return response()->json(['message' => 'Альбом сохранён.', 'album' => $album]);
     }
 
-    public function destroyAlbum(Request $request, PhotoAlbum $album): JsonResponse
+    public function destroyAlbum(Request $request, int|string $album): JsonResponse
     {
         $person = $this->editablePerson($request);
+        $album = PhotoAlbum::query()->findOrFail((int) $album);
         abort_unless($album->person_id === $person->id, 403);
         $album->delete();
 
@@ -265,9 +275,10 @@ class FamilySelfServiceController extends Controller
         ], 201);
     }
 
-    public function destroyPhoto(Request $request, PersonPhoto $photo): JsonResponse
+    public function destroyPhoto(Request $request, int|string $photo): JsonResponse
     {
         $owner = $this->editablePerson($request);
+        $photo = PersonPhoto::query()->findOrFail((int) $photo);
         $target = $photo->person;
         abort_unless($target->is($owner) || $this->isEditableRelative($owner, $target), 403);
 

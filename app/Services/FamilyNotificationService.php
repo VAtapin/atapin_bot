@@ -83,10 +83,19 @@ class FamilyNotificationService
             return;
         }
 
+        $change->loadMissing(['tree', 'user']);
+        $subject = $this->changeSubject($change);
+        $fields = $this->changedFields($change);
         $this->sendToManagers(
             $change->tree,
-            "✏️ <b>В семейном дереве появились изменения</b>\n\n"
-            .'Откройте историю изменений в админке для проверки.',
+            "✏️ <b>Изменение в семейном дереве</b>\n\n"
+            .'Дерево: <b>'.e($change->tree->name)."</b>\n"
+            .'Кто изменил: <b>'.e($change->user?->name ?: 'не определено')."</b>\n"
+            .'Что: <b>'.e($subject)."</b>\n"
+            .'Действие: '.e($this->changeAction($change->action))
+            .($fields !== '' ? "\nИзменено: ".e($fields) : '')
+            ."\n\nПолучатели: владелец и модераторы этого дерева."
+            ."\nОткройте историю изменений в админке для подробной проверки.",
         );
     }
 
@@ -119,5 +128,85 @@ class FamilyNotificationService
         } catch (Throwable $exception) {
             report($exception);
         }
+    }
+
+    private function changeSubject(ChangeLog $change): string
+    {
+        $data = array_replace($change->before ?? [], $change->after ?? []);
+        $type = class_basename($change->subject_type);
+
+        if ($type === 'Person') {
+            $name = collect([
+                $data['last_name'] ?? null,
+                $data['first_name'] ?? null,
+                $data['middle_name'] ?? null,
+            ])->filter()->implode(' ');
+
+            return 'карточка человека'.($name !== '' ? ' — '.$name : " #{$change->subject_id}");
+        }
+
+        $label = match ($type) {
+            'ParentChild' => 'связь родитель — ребёнок',
+            'Partnership' => 'супружеская связь',
+            'PersonPhoto' => 'фотография',
+            'PhotoAlbum' => 'фотоальбом',
+            'FamilyEvent' => 'семейное событие',
+            'TelegramGroup' => 'Telegram-группа',
+            'TreeMembership' => 'доступ участника',
+            default => 'семейная запись',
+        };
+        $name = $data['title'] ?? $data['name'] ?? $data['label'] ?? null;
+
+        return $label.($name ? ' — '.$name : " #{$change->subject_id}");
+    }
+
+    private function changeAction(string $action): string
+    {
+        return match ($action) {
+            'created' => 'добавлено',
+            'updated' => 'изменено',
+            'deleted' => 'удалено',
+            'restored' => 'восстановлено',
+            default => $action,
+        };
+    }
+
+    private function changedFields(ChangeLog $change): string
+    {
+        $labels = [
+            'first_name' => 'имя',
+            'middle_name' => 'отчество',
+            'last_name' => 'фамилия',
+            'maiden_name' => 'девичья фамилия',
+            'gender' => 'пол',
+            'birth_date' => 'дата рождения',
+            'death_date' => 'дата смерти',
+            'birth_place' => 'место рождения',
+            'death_place' => 'место смерти',
+            'burial_place' => 'место захоронения',
+            'current_city' => 'город проживания',
+            'current_address' => 'адрес',
+            'occupation' => 'род занятий',
+            'bio' => 'биография',
+            'title' => 'название',
+            'description' => 'описание',
+            'status' => 'статус',
+            'role' => 'роль',
+            'person_id' => 'привязка к человеку',
+            'is_active' => 'доступ',
+        ];
+
+        return collect(array_keys($change->after ?? $change->before ?? []))
+            ->reject(fn (string $field): bool => in_array($field, [
+                'id',
+                'tree_id',
+                'user_id',
+                'created_at',
+                'updated_at',
+            ], true))
+            ->map(fn (string $field): string => $labels[$field] ?? str_replace('_', ' ', $field))
+            ->unique()
+            ->take(6)
+            ->implode(', ');
     }
 }
