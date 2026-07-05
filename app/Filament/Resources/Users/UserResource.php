@@ -6,14 +6,11 @@ use App\Filament\Resources\Users\Pages\CreateUser;
 use App\Filament\Resources\Users\Pages\EditUser;
 use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Models\User;
-use App\Services\UserMergeService;
 use BackedEnum;
-use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -127,33 +124,6 @@ class UserResource extends Resource
                 //
             ])
             ->recordActions([
-                Action::make('merge')
-                    ->label('Объединить дубль')
-                    ->color('warning')
-                    ->icon(Heroicon::OutlinedArrowsPointingIn)
-                    ->visible(fn (User $record): bool => $record->id !== auth()->id() && ! $record->merged_at)
-                    ->schema([
-                        Select::make('target_id')
-                            ->label('Основная учётная запись')
-                            ->options(fn (User $record): array => User::query()
-                                ->whereKeyNot($record->id)
-                                ->whereNull('merged_at')
-                                ->orderBy('name')
-                                ->get()
-                                ->mapWithKeys(fn (User $user): array => [$user->id => "{$user->name} — {$user->email}"])
-                                ->all())
-                            ->searchable()
-                            ->required(),
-                    ])
-                    ->requiresConfirmation()
-                    ->action(function (User $record, array $data): void {
-                        app(UserMergeService::class)->merge(
-                            $record,
-                            User::query()->findOrFail($data['target_id']),
-                            auth()->user(),
-                        );
-                        Notification::make()->title('Учётные записи объединены')->success()->send();
-                    }),
                 EditAction::make(),
             ]);
     }
