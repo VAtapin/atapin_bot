@@ -21,7 +21,7 @@ use Illuminate\Database\Eloquent\Builder;
 
 class UserResource extends Resource
 {
-    protected static string|\UnitEnum|null $navigationGroup = 'Пользователи и доступ';
+    protected static string|\UnitEnum|null $navigationGroup = 'Платформа и доступ';
 
     protected static ?int $navigationSort = 10;
 
@@ -31,11 +31,11 @@ class UserResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
-    protected static ?string $modelLabel = 'пользователь';
+    protected static ?string $modelLabel = 'аккаунт платформы';
 
-    protected static ?string $pluralModelLabel = 'Пользователи';
+    protected static ?string $pluralModelLabel = 'Аккаунты платформы';
 
-    protected static ?string $navigationLabel = 'Пользователи';
+    protected static ?string $navigationLabel = 'Аккаунты платформы';
 
     public static function form(Schema $schema): Schema
     {
@@ -91,6 +91,29 @@ class UserResource extends Resource
                 TextColumn::make('externalIdentities.provider')
                     ->label('Способы входа')
                     ->badge(),
+                TextColumn::make('platform_scope')
+                    ->label('Тип')
+                    ->badge()
+                    ->state(function (User $record): string {
+                        if ($record->is_super_admin) {
+                            return 'Суперадмин';
+                        }
+
+                        if ((int) ($record->owned_trees_count ?? 0) > 0) {
+                            return 'Владелец дерева';
+                        }
+
+                        return 'Без дерева';
+                    }),
+                TextColumn::make('owned_trees_count')
+                    ->label('Владеет деревьями')
+                    ->numeric()
+                    ->sortable(),
+                TextColumn::make('memberships_count')
+                    ->label('Членств')
+                    ->numeric()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 IconColumn::make('is_active')
                     ->label('Активен')
                     ->boolean(),
@@ -151,10 +174,19 @@ class UserResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery();
+        $query = parent::getEloquentQuery()
+            ->withCount([
+                'memberships',
+                'memberships as owned_trees_count' => fn (Builder $query): Builder => $query->where('role', 'owner'),
+            ]);
 
         return auth()->user()?->is_super_admin
-            ? $query
+            ? $query->where(function (Builder $query): void {
+                $query
+                    ->where('is_super_admin', true)
+                    ->orWhereHas('memberships', fn (Builder $query): Builder => $query->where('role', 'owner'))
+                    ->orWhereDoesntHave('memberships');
+            })
             : $query->whereKey(auth()->id());
     }
 

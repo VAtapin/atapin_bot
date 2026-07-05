@@ -27,14 +27,21 @@ class PlatformStats extends StatsOverviewWidget
             ->whereNotNull('error')
             ->where('created_at', '>=', now()->subDay())
             ->count();
+        $platformAccounts = User::query()
+            ->where(function ($query): void {
+                $query
+                    ->where('is_super_admin', true)
+                    ->orWhereHas('memberships', fn ($query) => $query->where('role', 'owner'))
+                    ->orWhereDoesntHave('memberships');
+            });
         $freeBytes = @disk_free_space(storage_path());
 
         return [
             Stat::make('Семейные деревья', FamilyTree::query()->count())
                 ->description('Активных: '.FamilyTree::query()->where('status', 'active')->count())
                 ->url(FamilyTreeResource::getUrl('index')),
-            Stat::make('Пользователи', User::query()->count())
-                ->description('Активных: '.User::query()->where('is_active', true)->count())
+            Stat::make('Аккаунты платформы', (clone $platformAccounts)->count())
+                ->description('Суперадмины, владельцы и аккаунты без дерева')
                 ->url(UserResource::getUrl('index')),
             Stat::make('Подписки', Subscription::query()->whereIn('status', ['trial', 'active'])->count())
                 ->description("Заканчиваются за 14 дней: {$expiring}")

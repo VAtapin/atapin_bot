@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Hash;
 
 class SuperAdministratorResource extends Resource
 {
-    protected static string|\UnitEnum|null $navigationGroup = 'Пользователи и доступ';
+    protected static string|\UnitEnum|null $navigationGroup = 'Платформа и доступ';
 
     protected static ?int $navigationSort = 20;
 
