@@ -34,6 +34,7 @@ use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\Width;
 use Filament\View\PanelsRenderHook;
 use Filament\Widgets\AccountWidget;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -56,6 +57,7 @@ class TreePanelProvider extends PanelProvider
             ->colors([
                 'primary' => Color::Emerald,
             ])
+            ->maxContentWidth(Width::Full)
             ->sidebarCollapsibleOnDesktop()
             ->tenant(FamilyTree::class, slugAttribute: 'slug', ownershipRelationship: 'tree')
             ->tenantProfile(EditTreeProfile::class)

@@ -73,7 +73,7 @@ class UserMergeService
                 $existing = $target->memberships()->where('tree_id', $membership->tree_id)->first();
                 if ($existing) {
                     $roles = ['guest' => 1, 'member' => 2, 'moderator' => 3, 'owner' => 4];
-                    $existing->update([
+                    $mergedMembershipData = [
                         'person_id' => $existing->person_id ?: $membership->person_id,
                         'person_linked_at' => $existing->person_linked_at
                             ?: $membership->person_linked_at
@@ -84,8 +84,10 @@ class UserMergeService
                         'status' => in_array('approved', [$existing->status, $membership->status], true)
                             ? 'approved'
                             : $existing->status,
-                    ]);
+                    ];
                     $membership->delete();
+                    $existing->refresh();
+                    $existing->update($mergedMembershipData);
                 } else {
                     $membership->update(['user_id' => $target->id]);
                 }
