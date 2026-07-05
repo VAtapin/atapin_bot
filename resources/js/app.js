@@ -198,8 +198,8 @@ function treeMetrics() {
     const mobile = window.matchMedia('(max-width: 700px)').matches;
 
     return mobile
-        ? { mobile, personWidth: 126, personHeight: 174, spouseGap: 16, familyGap: 54, generationGap: 260, unionOffset: 108 }
-        : { mobile, personWidth: 220, personHeight: 96, spouseGap: 28, familyGap: 110, generationGap: 245, unionOffset: 76 };
+        ? { mobile, personWidth: 132, personHeight: 158, photoSize: 58, badgeSize: 28, spouseGap: 18, familyGap: 58, generationGap: 255, unionOffset: 104 }
+        : { mobile, personWidth: 142, personHeight: 172, photoSize: 70, badgeSize: 30, spouseGap: 24, familyGap: 92, generationGap: 275, unionOffset: 112 };
 }
 
 function personElements(data, metrics) {
@@ -222,7 +222,32 @@ function personElements(data, metrics) {
             person.relation ? `relation-${person.relation}` : '',
         ].filter(Boolean).join(' '),
         position: positions.get(String(person.id)),
+        grabbable: false,
     }));
+    const photoNodes = data.people
+        .filter((person) => person.photo_url && positions.has(String(person.id)))
+        .map((person) => {
+            const position = positions.get(String(person.id));
+
+            return {
+                data: {
+                    id: `photo-${person.id}`,
+                    personId: String(person.id),
+                    photo: person.photo_url,
+                },
+                classes: [
+                    'person-photo',
+                    person.gender ? `photo-${person.gender}` : '',
+                    person.death_date ? 'photo-deceased' : '',
+                ].filter(Boolean).join(' '),
+                position: {
+                    x: position.x,
+                    y: position.y - (metrics.personHeight / 2) + (metrics.photoSize / 2) + 14,
+                },
+                grabbable: false,
+                selectable: false,
+            };
+        });
     const mourningNodes = data.people
         .filter((person) => person.death_date && positions.has(String(person.id)))
         .map((person) => {
@@ -236,8 +261,8 @@ function personElements(data, metrics) {
                 },
                 classes: 'mourning-ribbon',
                 position: {
-                    x: position.x + (metrics.mobile ? 46 : 92),
-                    y: position.y + (metrics.mobile ? 68 : 34),
+                    x: position.x + (metrics.personWidth / 2) - 15,
+                    y: position.y + (metrics.personHeight / 2) - 15,
                 },
                 grabbable: false,
                 selectable: false,
@@ -254,13 +279,15 @@ function personElements(data, metrics) {
                     kind: 'continuation',
                     personId: String(person.id),
                     image: branchContinuationImage,
+                    icon: '⇱',
                 },
                 classes: 'branch-continuation',
                 position: {
-                    x: position.x + (metrics.mobile ? 44 : 88),
-                    y: position.y - (metrics.mobile ? 72 : 36),
+                    x: position.x + (metrics.personWidth / 2) - 12,
+                    y: position.y - (metrics.personHeight / 2) + 12,
                 },
                 grabbable: false,
+                selectable: false,
             };
         });
     const birthdayNodes = data.people
@@ -276,13 +303,15 @@ function personElements(data, metrics) {
                     recipient: person.name,
                     date: person.birthday.date,
                     image: birthdayCandleImage,
+                    icon: '🕯',
                 },
                 classes: 'birthday-candle',
                 position: {
-                    x: position.x - (metrics.mobile ? 45 : 88),
-                    y: position.y - (metrics.mobile ? 72 : 36),
+                    x: position.x - (metrics.personWidth / 2) + 12,
+                    y: position.y - (metrics.personHeight / 2) + 12,
                 },
                 grabbable: false,
+                selectable: false,
             };
         });
 
@@ -356,6 +385,7 @@ function personElements(data, metrics) {
 
     return [
         ...nodes,
+        ...photoNodes,
         ...mourningNodes,
         ...continuationNodes,
         ...birthdayNodes,
@@ -606,6 +636,7 @@ async function renderTree(data) {
         minZoom: 0.25,
         maxZoom: 2.5,
         wheelSensitivity: 0.2,
+        autoungrabify: true,
         style: [
             {
                 selector: 'node.person',
@@ -619,13 +650,14 @@ async function renderTree(data) {
                     label: 'data(label)',
                     color: '#2b251e',
                     'font-family': 'system-ui, sans-serif',
-                    'font-size': 14,
+                    'font-size': metrics.mobile ? 11 : 12,
                     'font-weight': 700,
                     'text-wrap': 'wrap',
-                    'text-max-width': 178,
-                    'text-valign': 'center',
+                    'text-max-width': metrics.personWidth - 20,
+                    'text-valign': 'bottom',
                     'text-halign': 'center',
                     'text-margin-x': 0,
+                    'text-margin-y': -16,
                     'overlay-opacity': 0,
                     'shadow-blur': 14,
                     'shadow-color': '#6f6049',
@@ -635,32 +667,37 @@ async function renderTree(data) {
             },
             {
                 selector: 'node.person.has-photo',
-                style: metrics.mobile ? {
+                style: metrics.mobile ? {} : {
+                    'text-margin-y': -18,
+                },
+            },
+            {
+                selector: 'node.person-photo',
+                style: {
+                    width: metrics.photoSize,
+                    height: metrics.photoSize,
+                    shape: 'ellipse',
                     'background-image': 'data(photo)',
                     'background-fit': 'cover',
-                    'background-width': 72,
-                    'background-height': 72,
+                    'background-width': metrics.photoSize,
+                    'background-height': metrics.photoSize,
                     'background-position-x': '50%',
-                    'background-position-y': '23%',
-                    'background-clip': 'node',
-                    'text-valign': 'bottom',
-                    'text-halign': 'center',
-                    'text-margin-y': -16,
-                    'text-margin-x': 0,
-                    'text-max-width': 108,
-                    'font-size': 12,
-                } : {
-                    'background-image': 'data(photo)',
-                    'background-fit': 'none',
-                    'background-width': 68,
-                    'background-height': 68,
-                    'background-position-x': '9%',
                     'background-position-y': '50%',
                     'background-clip': 'node',
-                    'text-halign': 'center',
-                    'text-margin-x': 39,
-                    'text-max-width': 126,
+                    'border-width': 3,
+                    'border-color': '#fffdf8',
+                    'overlay-opacity': 0,
+                    'z-index': 24,
+                    'events': 'yes',
                 },
+            },
+            {
+                selector: 'node.person-photo.photo-female',
+                style: { 'border-color': '#f3c1c7' },
+            },
+            {
+                selector: 'node.person-photo.photo-male',
+                style: { 'border-color': '#bde8f3' },
             },
             {
                 selector: 'node.person.relation-self',
@@ -710,8 +747,8 @@ async function renderTree(data) {
             {
                 selector: 'node.mourning-ribbon',
                 style: {
-                    width: 44,
-                    height: 44,
+                    width: 40,
+                    height: 40,
                     shape: 'rectangle',
                     'background-opacity': 0,
                     'background-image': 'data(image)',
@@ -725,13 +762,21 @@ async function renderTree(data) {
             {
                 selector: 'node.branch-continuation, node.birthday-candle',
                 style: {
-                    width: 30,
-                    height: 30,
+                    width: metrics.badgeSize,
+                    height: metrics.badgeSize,
                     shape: 'ellipse',
                     'background-color': '#fffdf8',
                     'background-image': 'data(image)',
                     'background-fit': 'contain',
-                    'border-width': 1,
+                    'background-width': metrics.badgeSize - 8,
+                    'background-height': metrics.badgeSize - 8,
+                    label: 'data(icon)',
+                    color: '#2b251e',
+                    'font-size': metrics.badgeSize - 12,
+                    'font-weight': 800,
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'border-width': 1.5,
                     'border-color': '#d7cbb9',
                     'overlay-opacity': 0,
                     'z-index': 30,
@@ -786,6 +831,7 @@ async function renderTree(data) {
     });
 
     state.cytoscape.on('tap', 'node.person', (event) => showPerson(event.target.id()));
+    state.cytoscape.on('tap', 'node.person-photo', (event) => showPerson(event.target.data('personId')));
     state.cytoscape.on('tap', 'node.branch-continuation', async (event) => {
         state.focusId = String(event.target.data('personId'));
         state.scope = 'branch';

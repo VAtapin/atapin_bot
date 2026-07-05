@@ -16,6 +16,10 @@
                 <a class="button secondary" href="{{ $secondaryUrl }}">{{ $translation->secondary_label }}</a>
             @endif
         </div>
+        <p class="hero-join-note">
+            <strong>{{ __('public.auth.join_existing_title') }}</strong>
+            {{ __('public.auth.join_existing_text') }}
+        </p>
         @if($section->items->isNotEmpty())
             <div class="trust-row" aria-label="{{ __('public.home.trust_label') }}">
                 @foreach($section->items as $item)

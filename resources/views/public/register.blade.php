@@ -7,6 +7,10 @@
 <section class="content-card">
     <h1>{{ __('public.auth.register_heading') }}</h1>
     <p>{{ __('public.auth.trial') }}</p>
+    <div class="join-existing-note">
+        <strong>{{ __('public.auth.join_existing_title') }}</strong>
+        <p>{{ __('public.auth.join_existing_text') }}</p>
+    </div>
     <form class="form-grid" method="post" action="{{ route('register.store') }}">
         @csrf
         <label class="@error('name') field-invalid @enderror">

@@ -389,6 +389,26 @@ a { color: inherit; }
 .hero-actions,
 .section-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
 .section-actions { margin-top: 26px; }
+.hero-join-note {
+    max-width: 640px;
+    margin: 16px auto 0;
+    color: var(--public-muted);
+    font-size: 15px;
+    line-height: 1.55;
+}
+.hero-join-note strong {
+    display: block;
+    color: var(--public-ink);
+}
+.join-existing-note {
+    margin: 18px 0 22px;
+    padding: 14px 16px;
+    border: 1px solid color-mix(in srgb, var(--public-accent) 28%, var(--public-line));
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--public-accent) 8%, var(--public-card));
+}
+.join-existing-note strong { display: block; margin-bottom: 4px; color: var(--public-ink); }
+.join-existing-note p { margin: 0; color: var(--public-muted); }
 .trust-row {
     display: flex;
     justify-content: center;

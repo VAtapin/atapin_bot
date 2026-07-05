@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FamilyTree;
+use App\Models\ExternalIdentity;
 use App\Models\TelegramUser;
 use App\Models\User;
 use App\Services\AnalyticsService;
@@ -10,6 +11,7 @@ use App\Services\AuthRedirector;
 use App\Services\ExternalIdentityService;
 use App\Services\TelegramWebLogin;
 use App\Services\TreeAccessService;
+use App\Services\UserMergeService;
 use App\Support\SafeReturnUrl;
 use Firebase\JWT\JWK;
 use Firebase\JWT\JWT;
@@ -154,7 +156,23 @@ class TelegramLoginController extends Controller
             : null;
         $linkUser = isset($oidc['link_user_id'])
             ? User::query()->find($oidc['link_user_id'])
-            : null;
+            : $request->user();
+        if ($linkUser) {
+            $existingIdentity = ExternalIdentity::query()
+                ->where('provider', 'telegram')
+                ->where('provider_user_id', (string) $telegramId)
+                ->with('user')
+                ->first();
+
+            if ($existingIdentity?->user && ! $existingIdentity->user->is($linkUser)) {
+                try {
+                    app(UserMergeService::class)->merge($existingIdentity->user, $linkUser, $linkUser);
+                } catch (ValidationException $exception) {
+                    return redirect()->route('account')
+                        ->with('status', collect($exception->errors())->flatten()->first());
+                }
+            }
+        }
         $familyUser = app(ExternalIdentityService::class)->resolve('telegram', $telegramId, [
             'username' => $user->username,
             'first_name' => $user->first_name,

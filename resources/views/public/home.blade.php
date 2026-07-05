@@ -44,6 +44,10 @@
                     <a class="button" href="{{ route('register') }}">{{ __('public.home.create') }}</a>
                 </div>
             @endif
+            <p class="hero-join-note">
+                <strong>{{ __('public.auth.join_existing_title') }}</strong>
+                {{ __('public.auth.join_existing_text') }}
+            </p>
         </section>
     @endif
 @endsection
