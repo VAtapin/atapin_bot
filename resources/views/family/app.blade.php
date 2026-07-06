@@ -1,11 +1,40 @@
 <!doctype html>
 <html lang="{{ app()->getLocale() }}">
 <head>
+    @php
+        $familySeoTitle = $familyName.' — '.__('miniapp.title_suffix');
+        $familySeoDescription = 'Приватное семейное дерево «'.$familyName.'»: фотографии, важные даты, родные и история рода.';
+        if (trim($familySubtitle)) {
+            $familySeoDescription .= ' '.trim($familySubtitle);
+        }
+        $familySeoDescription = \Illuminate\Support\Str::limit(
+            trim(preg_replace('/\s+/u', ' ', strip_tags($familySeoDescription))),
+            160,
+            ''
+        );
+        $familyCanonical = url()->current();
+        $familySeoImage = $familyCrestUrl
+            ? url($familyCrestUrl)
+            : asset('images/og-image.jpg');
+    @endphp
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#f6f2e9">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $familyName }} — {{ __('miniapp.title_suffix') }}</title>
+    <title>{{ $familySeoTitle }}</title>
+    <meta name="description" content="{{ $familySeoDescription }}">
+    <link rel="canonical" href="{{ $familyCanonical }}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="{{ __('public.brand') }}">
+    <meta property="og:title" content="{{ $familySeoTitle }}">
+    <meta property="og:description" content="{{ $familySeoDescription }}">
+    <meta property="og:url" content="{{ $familyCanonical }}">
+    <meta property="og:image" content="{{ $familySeoImage }}">
+    <meta property="og:image:alt" content="{{ $familyName }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ $familySeoTitle }}">
+    <meta name="twitter:description" content="{{ $familySeoDescription }}">
+    <meta name="twitter:image" content="{{ $familySeoImage }}">
     @if(($familyAppConfig['platform'] ?? 'web') === 'telegram')
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
     @else
@@ -242,7 +271,10 @@
     <aside id="photo-viewer" class="photo-viewer" hidden>
         <article class="photo-viewer-card">
             <button id="close-photo-viewer" class="icon-button photo-viewer-close" type="button" aria-label="{{ __('miniapp.filters.close') }}">×</button>
+            <button id="photo-viewer-prev" class="photo-viewer-nav photo-viewer-prev" type="button" aria-label="{{ __('pagination.previous') }}">‹</button>
             <img id="photo-viewer-image" src="" alt="">
+            <button id="photo-viewer-next" class="photo-viewer-nav photo-viewer-next" type="button" aria-label="{{ __('pagination.next') }}">›</button>
+            <div id="photo-viewer-counter" class="photo-viewer-counter"></div>
             <div id="photo-viewer-caption"></div>
         </article>
     </aside>

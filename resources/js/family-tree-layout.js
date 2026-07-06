@@ -151,6 +151,7 @@ export function calculateFamilyTreePositions(data, options = {}) {
             .sort();
         const parentKey = parentIds.length ? parentIds.join('-') : `root-${root}`;
         const birth = people.get(anchorMember)?.birth_date;
+        const anchorIndex = Math.max(ordered.indexOf(anchorMember), 0);
 
         return {
             root,
@@ -161,14 +162,30 @@ export function calculateFamilyTreePositions(data, options = {}) {
             birthOrder: birth ? Date.parse(birth) : Number.MAX_SAFE_INTEGER,
             width: ordered.length * personWidth
                 + Math.max(ordered.length - 1, 0) * spouseGap,
+            anchorOffset: personWidth / 2 + anchorIndex * (personWidth + spouseGap),
         };
     });
     const positions = new Map();
     const maxGeneration = Math.max(0, ...clusters.map((cluster) => cluster.generation));
     let generationY = 0;
 
-    const groupWidth = (items) => items.reduce((sum, item) => sum + item.width, 0)
-        + Math.max(items.length - 1, 0) * familyGap;
+    const measureItems = (items) => {
+        let width = 0;
+        const anchorOffsets = [];
+
+        items.forEach((item, index) => {
+            anchorOffsets.push(width + (item.anchorOffset ?? item.width / 2));
+            width += item.width;
+            if (index < items.length - 1) width += familyGap;
+        });
+
+        return {
+            width,
+            anchorCenterOffset: anchorOffsets.length
+                ? anchorOffsets.reduce((sum, value) => sum + value, 0) / anchorOffsets.length
+                : width / 2,
+        };
+    };
     const splitWideGroup = (group) => {
         if (!Number.isFinite(maxRowWidth) || group.width <= maxRowWidth) {
             return [group];
@@ -184,11 +201,14 @@ export function calculateFamilyTreePositions(data, options = {}) {
                 + item.width;
 
             if (currentItems.length && nextWidth > maxRowWidth) {
+                const measured = measureItems(currentItems);
+
                 chunks.push({
                     ...group,
                     key: `${group.key}:${chunks.length + 1}`,
                     items: currentItems,
-                    width: currentWidth,
+                    width: measured.width,
+                    anchorCenterOffset: measured.anchorCenterOffset,
                 });
                 currentItems = [];
                 currentWidth = 0;
@@ -199,11 +219,14 @@ export function calculateFamilyTreePositions(data, options = {}) {
         }
 
         if (currentItems.length) {
+            const measured = measureItems(currentItems);
+
             chunks.push({
                 ...group,
                 key: `${group.key}:${chunks.length + 1}`,
                 items: currentItems,
-                width: currentWidth,
+                width: measured.width,
+                anchorCenterOffset: measured.anchorCenterOffset,
             });
         }
 
@@ -220,6 +243,7 @@ export function calculateFamilyTreePositions(data, options = {}) {
         const groupEntries = [...groups.entries()].map(([key, items]) => {
             items.sort((left, right) => left.birthOrder - right.birthOrder
                 || String(left.root).localeCompare(String(right.root)));
+            const measured = measureItems(items);
             const parentXs = items
                 .flatMap((item) => item.parentIds)
                 .map((id) => positions.get(id)?.x)
@@ -231,7 +255,8 @@ export function calculateFamilyTreePositions(data, options = {}) {
                 desiredX: parentXs.length
                     ? parentXs.reduce((sum, value) => sum + value, 0) / parentXs.length
                     : Number.POSITIVE_INFINITY,
-                width: groupWidth(items),
+                width: measured.width,
+                anchorCenterOffset: measured.anchorCenterOffset,
             };
         });
 
@@ -248,7 +273,7 @@ export function calculateFamilyTreePositions(data, options = {}) {
         const rows = [{ placements: [], cursor: null, minX: null, maxX: null }];
         const placeInRow = (row, entry) => {
             const desiredStart = Number.isFinite(entry.desiredX)
-                ? entry.desiredX - entry.width / 2
+                ? entry.desiredX - (entry.anchorCenterOffset ?? entry.width / 2)
                 : (row.cursor ?? 0);
             const start = row.cursor === null
                 ? desiredStart

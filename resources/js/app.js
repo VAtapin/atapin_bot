@@ -50,6 +50,10 @@ const state = {
     galleryPhotos: new Map(),
     galleryCursor: null,
     galleryLoading: false,
+    photoViewerPhotos: [],
+    photoViewerIndex: 0,
+    photoViewerTouchStartX: null,
+    photoViewerTouchStartY: null,
     focusId: startAction?.focus
         ?? window.familyAppConfig?.focusId
         ?? initialParams.get('focus'),
@@ -1052,21 +1056,30 @@ function showPerson(id) {
             showPerson(relativeId);
         });
     });
-    $('#person-content').querySelector('[data-view-main-photo]')?.addEventListener('click', () => {
-        showPhotoViewer({
+    const viewerPhotos = [
+        person.photo_url ? {
             url: person.photo_url,
             title: person.name,
             person_id: person.id,
             person_name: person.name,
+        } : null,
+        ...photos.map((item) => ({
+            ...item,
+            person_id: person.id,
+            person_name: person.name,
+        })),
+    ].filter(Boolean);
+    $('#person-content').querySelector('[data-view-main-photo]')?.addEventListener('click', () => {
+        showPhotoViewer({
+            photos: viewerPhotos,
+            index: 0,
         });
     });
     $('#person-content').querySelectorAll('[data-person-photo-index]').forEach((button) => {
         button.addEventListener('click', () => {
-            const item = photos[Number(button.dataset.personPhotoIndex)];
             showPhotoViewer({
-                ...item,
-                person_id: person.id,
-                person_name: person.name,
+                photos: viewerPhotos,
+                index: Number(button.dataset.personPhotoIndex) + (person.photo_url ? 1 : 0),
             });
         });
     });
@@ -1305,8 +1318,13 @@ async function loadGallery(reset = true) {
         $('#gallery-grid').querySelectorAll('[data-photo-id]:not([data-bound])').forEach((item) => {
             item.dataset.bound = '1';
             item.addEventListener('click', () => {
-                const photo = state.galleryPhotos.get(String(item.dataset.photoId));
-                showPhotoViewer(photo);
+                const photoIds = [...$('#gallery-grid').querySelectorAll('[data-photo-id]')]
+                    .map((button) => String(button.dataset.photoId));
+                const photos = photoIds
+                    .map((id) => state.galleryPhotos.get(id))
+                    .filter(Boolean);
+                const index = Math.max(0, photos.findIndex((photo) => String(photo.id) === String(item.dataset.photoId)));
+                showPhotoViewer({ photos, index });
             });
         });
         state.galleryCursor = data.next_cursor;
@@ -1359,7 +1377,9 @@ async function loadEvents() {
     }
 }
 
-function showPhotoViewer(photo) {
+function renderPhotoViewer() {
+    const photo = state.photoViewerPhotos[state.photoViewerIndex];
+
     if (!photo) return;
 
     $('#photo-viewer-image').src = photo.url;
@@ -1385,7 +1405,35 @@ function showPhotoViewer(photo) {
         state.lastTreeData = null;
         switchTab('tree');
     });
-    $('#photo-viewer').hidden = false;
+    const hasMany = state.photoViewerPhotos.length > 1;
+    $('#photo-viewer-prev').hidden = !hasMany;
+    $('#photo-viewer-next').hidden = !hasMany;
+    $('#photo-viewer-counter').hidden = !hasMany;
+    $('#photo-viewer-counter').textContent = hasMany
+        ? `${state.photoViewerIndex + 1} / ${state.photoViewerPhotos.length}`
+        : '';
+}
+
+function showPhotoViewer(payload) {
+    const photos = Array.isArray(payload?.photos) ? payload.photos : [payload].filter(Boolean);
+
+    state.photoViewerPhotos = photos.filter((photo) => photo?.url);
+    state.photoViewerIndex = Math.min(
+        Math.max(Number(payload?.index ?? 0), 0),
+        Math.max(state.photoViewerPhotos.length - 1, 0),
+    );
+
+    renderPhotoViewer();
+    $('#photo-viewer').hidden = !state.photoViewerPhotos.length;
+}
+
+function movePhotoViewer(direction) {
+    if ($('#photo-viewer').hidden || state.photoViewerPhotos.length < 2) return;
+
+    state.photoViewerIndex = (
+        state.photoViewerIndex + direction + state.photoViewerPhotos.length
+    ) % state.photoViewerPhotos.length;
+    renderPhotoViewer();
 }
 
 function field(name, label, value = '', type = 'text') {
@@ -1830,8 +1878,40 @@ $('#person-sheet').addEventListener('click', (event) => {
     if (event.target.id === 'person-sheet') event.currentTarget.hidden = true;
 });
 $('#close-photo-viewer').addEventListener('click', () => { $('#photo-viewer').hidden = true; });
+$('#photo-viewer-prev').addEventListener('click', () => movePhotoViewer(-1));
+$('#photo-viewer-next').addEventListener('click', () => movePhotoViewer(1));
 $('#photo-viewer').addEventListener('click', (event) => {
     if (event.target.id === 'photo-viewer') event.currentTarget.hidden = true;
+});
+$('#photo-viewer').addEventListener('touchstart', (event) => {
+    const touch = event.changedTouches[0];
+    state.photoViewerTouchStartX = touch?.clientX ?? null;
+    state.photoViewerTouchStartY = touch?.clientY ?? null;
+}, { passive: true });
+$('#photo-viewer').addEventListener('touchend', (event) => {
+    if (state.photoViewerTouchStartX === null || state.photoViewerTouchStartY === null) return;
+
+    const touch = event.changedTouches[0];
+    const deltaX = (touch?.clientX ?? state.photoViewerTouchStartX) - state.photoViewerTouchStartX;
+    const deltaY = (touch?.clientY ?? state.photoViewerTouchStartY) - state.photoViewerTouchStartY;
+    state.photoViewerTouchStartX = null;
+    state.photoViewerTouchStartY = null;
+
+    if (Math.abs(deltaX) < 45 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+    movePhotoViewer(deltaX < 0 ? 1 : -1);
+}, { passive: true });
+document.addEventListener('keydown', (event) => {
+    if ($('#photo-viewer').hidden) return;
+
+    if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        movePhotoViewer(-1);
+    } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        movePhotoViewer(1);
+    } else if (event.key === 'Escape') {
+        $('#photo-viewer').hidden = true;
+    }
 });
 $('#report-issue-button').addEventListener('click', () => {
     $('#report-issue-modal').hidden = false;

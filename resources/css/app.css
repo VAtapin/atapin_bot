@@ -399,6 +399,7 @@ button { cursor: pointer; }
     padding: 18px;
     background: rgb(15 13 10 / 88%);
 }
+.photo-viewer[hidden] { display: none; }
 .report-issue-button {
     position: fixed;
     z-index: 11;
@@ -474,6 +475,41 @@ button { cursor: pointer; }
     right: 8px;
     background: rgb(255 255 255 / 88%);
     color: #17140f;
+}
+.photo-viewer-nav {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    display: grid;
+    width: 46px;
+    height: 60px;
+    place-items: center;
+    border: 0;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 78%);
+    color: #17140f;
+    cursor: pointer;
+    font-size: 42px;
+    line-height: 1;
+    transform: translateY(-50%);
+    transition: background-color .15s ease, transform .15s ease;
+}
+.photo-viewer-nav:hover {
+    background: rgb(255 255 255 / 92%);
+    transform: translateY(-50%) scale(1.04);
+}
+.photo-viewer-nav[hidden],
+.photo-viewer-counter[hidden] { display: none; }
+.photo-viewer-prev { left: clamp(8px, 3vw, 30px); }
+.photo-viewer-next { right: clamp(8px, 3vw, 30px); }
+.photo-viewer-counter {
+    margin-top: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 16%);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
 }
 #photo-viewer-caption {
     margin-top: 10px;
