@@ -65,12 +65,39 @@ export function calculateFamilyTreePositions(data, options = {}) {
         components.get(root).push(id);
     }
 
-    const partnershipDate = (link) => {
-        const value = link.started_at || link.ended_at || '';
+    const parseDate = (value) => {
         const timestamp = value ? Date.parse(value) : 0;
         return Number.isFinite(timestamp) ? timestamp : 0;
     };
+    const childParents = new Map();
+    for (const link of parentLinks) {
+        if (!childParents.has(link.child)) childParents.set(link.child, new Set());
+        childParents.get(link.child).add(link.parent);
+    }
+    const youngestChildDate = (one, two) => Math.max(0, ...[...childParents.entries()]
+        .filter(([, parents]) => parents.has(one) && parents.has(two))
+        .map(([child]) => parseDate(people.get(child)?.birth_date)));
+    const isEndedPartnership = (link) => Boolean(link?.ended_at)
+        || ['divorced', 'ended'].includes(String(link?.status ?? '').toLowerCase());
     const linksFor = (id) => partnerships.filter((link) => link.one === id || link.two === id);
+    const partnershipRank = (link, central, spouse) => {
+        if (!link) return [0, 0, 0, 0];
+
+        return [
+            isEndedPartnership(link) ? 0 : 1,
+            parseDate(link.started_at),
+            youngestChildDate(central, spouse),
+            parseDate(link.ended_at),
+        ];
+    };
+    const compareRankDesc = (leftRank, rightRank) => {
+        for (let index = 0; index < Math.max(leftRank.length, rightRank.length); index++) {
+            const diff = (rightRank[index] ?? 0) - (leftRank[index] ?? 0);
+            if (diff !== 0) return diff;
+        }
+
+        return 0;
+    };
     const orderedMembers = (members) => {
         if (members.length < 2) return members;
 
@@ -80,17 +107,22 @@ export function calculateFamilyTreePositions(data, options = {}) {
         })[0];
         const centralPerson = people.get(central);
         const spouses = members.filter((id) => id !== central);
-        const newestFirst = (left, right) => {
+        const actualFirst = (left, right) => {
             const leftLink = linksFor(central).find((link) => link.one === left || link.two === left);
             const rightLink = linksFor(central).find((link) => link.one === right || link.two === right);
-            return partnershipDate(rightLink ?? {}) - partnershipDate(leftLink ?? {});
+            const rankDiff = compareRankDesc(
+                partnershipRank(leftLink, central, left),
+                partnershipRank(rightLink, central, right),
+            );
+
+            return rankDiff || Number(left) - Number(right);
         };
 
         if (centralPerson?.gender === 'male') {
-            return [...spouses.sort((left, right) => -newestFirst(left, right)), central];
+            return [...spouses.sort((left, right) => -actualFirst(left, right)), central];
         }
         if (centralPerson?.gender === 'female') {
-            return [central, ...spouses.sort(newestFirst)];
+            return [central, ...spouses.sort(actualFirst)];
         }
 
         return [...members].sort((left, right) => {
@@ -213,35 +245,53 @@ export function calculateFamilyTreePositions(data, options = {}) {
         });
 
         const layoutEntries = groupEntries.flatMap(splitWideGroup);
-        const rows = [{ entries: [], width: 0 }];
+        const rows = [{ placements: [], cursor: null, minX: null, maxX: null }];
+        const placeInRow = (row, entry) => {
+            const desiredStart = Number.isFinite(entry.desiredX)
+                ? entry.desiredX - entry.width / 2
+                : (row.cursor ?? 0);
+            const start = row.cursor === null
+                ? desiredStart
+                : Math.max(row.cursor, desiredStart);
+            const end = start + entry.width;
+            const minX = row.minX === null ? start : Math.min(row.minX, start);
+            const maxX = row.maxX === null ? end : Math.max(row.maxX, end);
+
+            return {
+                start,
+                end,
+                minX,
+                maxX,
+                width: maxX - minX,
+            };
+        };
 
         for (const entry of layoutEntries) {
             let row = rows[rows.length - 1];
-            const projectedWidth = row.width
-                + (row.entries.length ? rowEntryGap : 0)
-                + entry.width;
+            let placement = placeInRow(row, entry);
 
             if (
                 Number.isFinite(maxRowWidth)
-                && row.entries.length
-                && projectedWidth > maxRowWidth
+                && row.placements.length
+                && placement.width > maxRowWidth
             ) {
-                row = { entries: [], width: 0 };
+                row = { placements: [], cursor: null, minX: null, maxX: null };
                 rows.push(row);
+                placement = placeInRow(row, entry);
             }
 
-            row.width += (row.entries.length ? rowEntryGap : 0) + entry.width;
-            row.entries.push(entry);
+            row.placements.push({ entry, start: placement.start });
+            row.cursor = placement.end + rowEntryGap;
+            row.minX = placement.minX;
+            row.maxX = placement.maxX;
         }
 
-        const widestRow = Math.max(0, ...rows.map((row) => row.width));
-
         rows.forEach((row, rowIndex) => {
-            let cursor = Math.max((widestRow - row.width) / 2, 0);
             const y = generationY + rowIndex * compactRowGap;
 
-            for (const group of row.entries) {
-                let clusterCursor = cursor;
+            for (const placement of row.placements) {
+                const group = placement.entry;
+                let clusterCursor = placement.start;
 
                 for (const cluster of group.items) {
                     let memberX = clusterCursor + personWidth / 2;
@@ -253,8 +303,6 @@ export function calculateFamilyTreePositions(data, options = {}) {
 
                     clusterCursor += cluster.width + familyGap;
                 }
-
-                cursor += group.width + rowEntryGap;
             }
         });
 
