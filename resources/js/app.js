@@ -420,10 +420,9 @@ function personElements(data, metrics) {
         }
 
         const firstChildY = Math.min(...childPositions.map((position) => position.y));
-        const branchY = Math.max(
-            unionPosition.y + Math.round(metrics.generationGap * 0.35),
-            firstChildY - (metrics.personHeight / 2) - 18,
-        );
+        const childTopY = firstChildY - (metrics.personHeight / 2);
+        const childBranchGap = metrics.mobile ? 24 : 36;
+        const branchY = childTopY - childBranchGap;
         const branchId = `${unionId}-children-branch`;
 
         parentBranchNodes.push({
