@@ -98,6 +98,17 @@ export function calculateFamilyTreePositions(data, options = {}) {
 
         return 0;
     };
+    const bestPartnerFor = (central, candidates) => candidates
+        .filter((id) => linksFor(central).some((link) => link.one === id || link.two === id))
+        .sort((left, right) => {
+            const leftLink = linksFor(central).find((link) => link.one === left || link.two === left);
+            const rightLink = linksFor(central).find((link) => link.one === right || link.two === right);
+
+            return compareRankDesc(
+                partnershipRank(leftLink, central, left),
+                partnershipRank(rightLink, central, right),
+            ) || Number(left) - Number(right);
+        })[0];
     const orderedMembers = (members) => {
         if (members.length < 2) return members;
 
@@ -152,6 +163,14 @@ export function calculateFamilyTreePositions(data, options = {}) {
         const parentKey = parentIds.length ? parentIds.join('-') : `root-${root}`;
         const birth = people.get(anchorMember)?.birth_date;
         const anchorIndex = Math.max(ordered.indexOf(anchorMember), 0);
+        const partnerIndex = Math.max(
+            ordered.indexOf(bestPartnerFor(anchorMember, ordered.filter((id) => id !== anchorMember))),
+            -1,
+        );
+        const memberCenterOffset = (index) => personWidth / 2 + index * (personWidth + spouseGap);
+        const anchorOffset = partnerIndex >= 0
+            ? (memberCenterOffset(anchorIndex) + memberCenterOffset(partnerIndex)) / 2
+            : memberCenterOffset(anchorIndex);
 
         return {
             root,
@@ -162,7 +181,7 @@ export function calculateFamilyTreePositions(data, options = {}) {
             birthOrder: birth ? Date.parse(birth) : Number.MAX_SAFE_INTEGER,
             width: ordered.length * personWidth
                 + Math.max(ordered.length - 1, 0) * spouseGap,
-            anchorOffset: personWidth / 2 + anchorIndex * (personWidth + spouseGap),
+            anchorOffset,
         };
     });
     const positions = new Map();
