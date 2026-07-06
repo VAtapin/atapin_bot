@@ -190,10 +190,11 @@ function showError(message, payload = {}) {
 
 function treeMetrics() {
     const mobile = window.matchMedia('(max-width: 700px)').matches;
+    const viewportWidth = Math.max(window.innerWidth || 1200, 320);
 
     return mobile
-        ? { mobile, personWidth: 112, personHeight: 138, photoSize: 54, badgeSize: 26, spouseGap: 16, familyGap: 58, generationGap: 235, unionOffset: 92 }
-        : { mobile, personWidth: 122, personHeight: 148, photoSize: 60, badgeSize: 28, spouseGap: 22, familyGap: 86, generationGap: 252, unionOffset: 98 };
+        ? { mobile, personWidth: 112, personHeight: 136, photoSize: 48, badgeSize: 26, spouseGap: 16, familyGap: 58, generationGap: 228, unionOffset: 90, maxRowWidth: Math.max(640, Math.min(900, viewportWidth * 1.65)) }
+        : { mobile, personWidth: 126, personHeight: 146, photoSize: 54, badgeSize: 28, spouseGap: 22, familyGap: 86, generationGap: 248, unionOffset: 96, maxRowWidth: Math.max(1250, Math.min(1800, viewportWidth * 0.9)) };
 }
 
 function personElements(data, metrics) {
@@ -203,7 +204,7 @@ function personElements(data, metrics) {
     const nodes = data.people.map((person) => ({
         data: {
             id: String(person.id),
-            label: `${person.name}${treeDateLabel(person) ? `\n${treeDateLabel(person)}` : ''}`,
+            label: '',
             years: person.life_years || '',
             photo: person.photo_url || '',
             gender: person.gender,
@@ -218,6 +219,26 @@ function personElements(data, metrics) {
         position: positions.get(String(person.id)),
         grabbable: false,
     }));
+    const textNodes = data.people
+        .filter((person) => positions.has(String(person.id)))
+        .map((person) => {
+            const position = positions.get(String(person.id));
+
+            return {
+                data: {
+                    id: `text-${person.id}`,
+                    personId: String(person.id),
+                    label: `${person.name}${treeDateLabel(person) ? `\n${treeDateLabel(person)}` : ''}`,
+                },
+                classes: 'person-text',
+                position: {
+                    x: position.x,
+                    y: position.y + (metrics.personHeight / 2) - (metrics.mobile ? 36 : 39),
+                },
+                grabbable: false,
+                selectable: false,
+            };
+        });
     const photoNodes = data.people
         .filter((person) => person.photo_url && positions.has(String(person.id)))
         .map((person) => {
@@ -236,7 +257,7 @@ function personElements(data, metrics) {
                 ].filter(Boolean).join(' '),
                 position: {
                     x: position.x,
-                    y: position.y - (metrics.personHeight / 2) + (metrics.photoSize / 2) + 12,
+                    y: position.y - (metrics.personHeight / 2) + (metrics.photoSize / 2) + 10,
                 },
                 grabbable: false,
                 selectable: false,
@@ -381,6 +402,7 @@ function personElements(data, metrics) {
         ...mourningNodes,
         ...continuationNodes,
         ...birthdayNodes,
+        ...textNodes,
         ...unionNodes,
         ...parentEdges,
         ...partnershipEdges,
@@ -664,6 +686,32 @@ async function renderTree(data) {
             {
                 selector: 'node.person.has-photo',
                 style: {},
+            },
+            {
+                selector: 'node.person-text',
+                style: {
+                    width: metrics.personWidth - 12,
+                    height: metrics.mobile ? 56 : 62,
+                    shape: 'round-rectangle',
+                    'background-color': '#fffdf8',
+                    'background-opacity': 0.92,
+                    'border-width': 0,
+                    label: 'data(label)',
+                    color: '#2b251e',
+                    'font-family': 'system-ui, sans-serif',
+                    'font-size': metrics.mobile ? 10.5 : 11.5,
+                    'font-weight': 800,
+                    'line-height': 1.08,
+                    'text-wrap': 'wrap',
+                    'text-max-width': metrics.personWidth - 18,
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'text-margin-x': 0,
+                    'text-margin-y': 0,
+                    'events': 'no',
+                    'overlay-opacity': 0,
+                    'z-index': 26,
+                },
             },
             {
                 selector: 'node.person-photo',

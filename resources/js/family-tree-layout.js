@@ -105,6 +105,10 @@ export function calculateFamilyTreePositions(data, options = {}) {
     const familyGap = options.familyGap ?? 110;
     const generationGap = options.generationGap ?? 245;
     const unionOffset = options.unionOffset ?? 76;
+    const compactRowGap = options.compactRowGap
+        ?? Math.max((options.personHeight ?? 140) + 62, Math.round(generationGap * 0.58));
+    const maxRowWidth = options.maxRowWidth ?? Number.POSITIVE_INFINITY;
+    const rowEntryGap = Math.max(familyGap, Math.round(personWidth * 0.72));
     const clusters = [...components.entries()].map(([root, members]) => {
         const ordered = orderedMembers(members);
         const childMembers = members.filter((id) => parentLinks.some((link) => link.child === id));
@@ -129,6 +133,50 @@ export function calculateFamilyTreePositions(data, options = {}) {
     });
     const positions = new Map();
     const maxGeneration = Math.max(0, ...clusters.map((cluster) => cluster.generation));
+    let generationY = 0;
+
+    const groupWidth = (items) => items.reduce((sum, item) => sum + item.width, 0)
+        + Math.max(items.length - 1, 0) * familyGap;
+    const splitWideGroup = (group) => {
+        if (!Number.isFinite(maxRowWidth) || group.width <= maxRowWidth) {
+            return [group];
+        }
+
+        const chunks = [];
+        let currentItems = [];
+        let currentWidth = 0;
+
+        for (const item of group.items) {
+            const nextWidth = currentWidth
+                + (currentItems.length ? familyGap : 0)
+                + item.width;
+
+            if (currentItems.length && nextWidth > maxRowWidth) {
+                chunks.push({
+                    ...group,
+                    key: `${group.key}:${chunks.length + 1}`,
+                    items: currentItems,
+                    width: currentWidth,
+                });
+                currentItems = [];
+                currentWidth = 0;
+            }
+
+            currentWidth += (currentItems.length ? familyGap : 0) + item.width;
+            currentItems.push(item);
+        }
+
+        if (currentItems.length) {
+            chunks.push({
+                ...group,
+                key: `${group.key}:${chunks.length + 1}`,
+                items: currentItems,
+                width: currentWidth,
+            });
+        }
+
+        return chunks;
+    };
 
     for (let generation = 0; generation <= maxGeneration; generation++) {
         const groups = new Map();
@@ -151,8 +199,7 @@ export function calculateFamilyTreePositions(data, options = {}) {
                 desiredX: parentXs.length
                     ? parentXs.reduce((sum, value) => sum + value, 0) / parentXs.length
                     : Number.POSITIVE_INFINITY,
-                width: items.reduce((sum, item) => sum + item.width, 0)
-                    + Math.max(items.length - 1, 0) * familyGap,
+                width: groupWidth(items),
             };
         });
 
@@ -165,22 +212,53 @@ export function calculateFamilyTreePositions(data, options = {}) {
             return left.key.localeCompare(right.key);
         });
 
-        let cursor = 0;
-        for (const group of groupEntries) {
-            const desiredStart = Number.isFinite(group.desiredX)
-                ? group.desiredX - group.width / 2
-                : cursor;
-            let clusterCursor = Math.max(cursor, desiredStart);
-            for (const cluster of group.items) {
-                let memberX = clusterCursor + personWidth / 2;
-                for (const memberId of cluster.ordered) {
-                    positions.set(memberId, { x: memberX, y: generation * generationGap });
-                    memberX += personWidth + spouseGap;
-                }
-                clusterCursor += cluster.width + familyGap;
+        const layoutEntries = groupEntries.flatMap(splitWideGroup);
+        const rows = [{ entries: [], width: 0 }];
+
+        for (const entry of layoutEntries) {
+            let row = rows[rows.length - 1];
+            const projectedWidth = row.width
+                + (row.entries.length ? rowEntryGap : 0)
+                + entry.width;
+
+            if (
+                Number.isFinite(maxRowWidth)
+                && row.entries.length
+                && projectedWidth > maxRowWidth
+            ) {
+                row = { entries: [], width: 0 };
+                rows.push(row);
             }
-            cursor = clusterCursor;
+
+            row.width += (row.entries.length ? rowEntryGap : 0) + entry.width;
+            row.entries.push(entry);
         }
+
+        const widestRow = Math.max(0, ...rows.map((row) => row.width));
+
+        rows.forEach((row, rowIndex) => {
+            let cursor = Math.max((widestRow - row.width) / 2, 0);
+            const y = generationY + rowIndex * compactRowGap;
+
+            for (const group of row.entries) {
+                let clusterCursor = cursor;
+
+                for (const cluster of group.items) {
+                    let memberX = clusterCursor + personWidth / 2;
+
+                    for (const memberId of cluster.ordered) {
+                        positions.set(memberId, { x: memberX, y });
+                        memberX += personWidth + spouseGap;
+                    }
+
+                    clusterCursor += cluster.width + familyGap;
+                }
+
+                cursor += group.width + rowEntryGap;
+            }
+        });
+
+        generationY += generationGap + Math.max(rows.length - 1, 0) * compactRowGap;
     }
 
     if (positions.size) {
