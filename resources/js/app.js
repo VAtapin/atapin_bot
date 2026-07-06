@@ -375,19 +375,19 @@ function personElements(data, metrics) {
     });
 
     const parentEdges = [];
+    const parentBranchNodes = [];
+    const parentTrunkEdges = [];
+    const parentBranchEdges = [];
+    const childrenByUnion = new Map();
+
     for (const [childId, parents] of parentsByChild) {
         const pairKey = [...parents].sort().join('-');
         const unionId = parents.length === 2 ? unionByPair.get(pairKey) : null;
 
         if (unionId) {
-            parentEdges.push({
-                data: {
-                    id: `parent-${unionId}-${childId}`,
-                    source: unionId,
-                    target: childId,
-                    kind: 'parent',
-                },
-            });
+            const childIds = childrenByUnion.get(unionId) ?? [];
+            childIds.push(childId);
+            childrenByUnion.set(unionId, childIds);
         } else {
             parents.forEach((parentId) => parentEdges.push({
                 data: {
@@ -400,6 +400,65 @@ function personElements(data, metrics) {
         }
     }
 
+    for (const [unionId, childIds] of childrenByUnion) {
+        const unionPosition = positions.get(unionId);
+        const childPositions = childIds
+            .map((childId) => positions.get(childId))
+            .filter(Boolean);
+
+        if (! unionPosition || childPositions.length === 0) {
+            childIds.forEach((childId) => parentEdges.push({
+                data: {
+                    id: `parent-${unionId}-${childId}`,
+                    source: unionId,
+                    target: childId,
+                    kind: 'parent',
+                },
+            }));
+
+            continue;
+        }
+
+        const firstChildY = Math.min(...childPositions.map((position) => position.y));
+        const branchY = Math.max(
+            unionPosition.y + Math.round(metrics.generationGap * 0.35),
+            firstChildY - (metrics.personHeight / 2) - 18,
+        );
+        const branchId = `${unionId}-children-branch`;
+
+        parentBranchNodes.push({
+            data: {
+                id: branchId,
+                kind: 'parent-branch-node',
+            },
+            position: {
+                x: unionPosition.x,
+                y: branchY,
+            },
+            classes: 'parent-branch-node',
+            grabbable: false,
+            selectable: false,
+        });
+
+        parentTrunkEdges.push({
+            data: {
+                id: `parent-trunk-${unionId}`,
+                source: unionId,
+                target: branchId,
+                kind: 'parent-trunk',
+            },
+        });
+
+        childIds.forEach((childId) => parentBranchEdges.push({
+            data: {
+                id: `parent-${branchId}-${childId}`,
+                source: branchId,
+                target: childId,
+                kind: 'parent-branch',
+            },
+        }));
+    }
+
     return [
         ...nodes,
         ...photoNodes,
@@ -408,6 +467,9 @@ function personElements(data, metrics) {
         ...birthdayNodes,
         ...textNodes,
         ...unionNodes,
+        ...parentBranchNodes,
+        ...parentTrunkEdges,
+        ...parentBranchEdges,
         ...parentEdges,
         ...partnershipEdges,
     ];
@@ -791,6 +853,20 @@ async function renderTree(data) {
                 },
             },
             {
+                selector: 'node.parent-branch-node',
+                style: {
+                    width: 1,
+                    height: 1,
+                    label: '',
+                    opacity: 0,
+                    'background-opacity': 0,
+                    'border-width': 0,
+                    'events': 'no',
+                    'overlay-opacity': 0,
+                    'z-index': 1,
+                },
+            },
+            {
                 selector: 'node.mourning-ribbon',
                 style: {
                     width: 40,
@@ -833,7 +909,28 @@ async function renderTree(data) {
                     'target-arrow-shape': 'triangle',
                     'curve-style': 'taxi',
                     'taxi-direction': 'downward',
-                    'taxi-turn': 24,
+                    'taxi-turn': '86%',
+                },
+            },
+            {
+                selector: 'edge[kind = "parent-trunk"]',
+                style: {
+                    width: 1.6,
+                    'line-color': '#9b8f7e',
+                    'target-arrow-shape': 'none',
+                    'curve-style': 'straight',
+                },
+            },
+            {
+                selector: 'edge[kind = "parent-branch"]',
+                style: {
+                    width: 1.6,
+                    'line-color': '#9b8f7e',
+                    'target-arrow-color': '#9b8f7e',
+                    'target-arrow-shape': 'triangle',
+                    'curve-style': 'taxi',
+                    'taxi-direction': 'downward',
+                    'taxi-turn': 0,
                 },
             },
             {
