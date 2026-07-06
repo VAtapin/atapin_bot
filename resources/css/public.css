@@ -497,6 +497,12 @@ a { color: inherit; }
     gap: 16px;
     margin-top: 36px;
 }
+.payment-method-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-top: 28px;
+}
 .feature-card,
 .step-card,
 .plan-card,

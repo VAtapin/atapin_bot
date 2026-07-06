@@ -6,6 +6,8 @@
         <div class="plan-grid">
             @foreach($plans as $plan)
                 @php
+                    $priceAmount = $plan->priceAmountFor($billingRegion ?? 'eu', $billingCurrency ?? null);
+                    $priceCurrency = $plan->currencyFor($billingRegion ?? 'eu', $billingCurrency ?? null);
                     $planName = filled($plan->name)
                         ? $plan->name
                         : (\Illuminate\Support\Facades\Lang::has("public.plans.{$plan->code}.name")
@@ -23,8 +25,8 @@
                         <p>{{ $planDescription }}</p>
                     @endif
                     <strong class="plan-card__price">
-                        {{ $plan->price_monthly > 0
-                            ? __('public.home.per_month', ['price' => $plan->price_monthly, 'currency' => $plan->currency])
+                        {{ $priceAmount > 0
+                            ? __('public.home.per_month', ['price' => number_format($priceAmount, 2, ',', ' '), 'currency' => $priceCurrency])
                             : __('public.home.free') }}
                     </strong>
                     <p class="plan-card__limits">{{ __('public.home.plan_limits', [

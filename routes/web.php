@@ -118,6 +118,9 @@ Route::get('/billing/{tree:slug}/{plan}/checkout', [BillingController::class, 'c
 Route::get('/billing/{tree:slug}/return', [BillingController::class, 'returned'])
     ->middleware('auth')
     ->name('billing.return');
+Route::get('/billing/cloudpayments/{payment}', [BillingController::class, 'cloudpayments'])
+    ->middleware('auth')
+    ->name('billing.cloudpayments');
 Route::get('/tree-management/leave', LeaveTreeManagementController::class)
     ->middleware('auth')
     ->name('tree.management.leave');

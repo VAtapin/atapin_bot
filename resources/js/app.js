@@ -197,8 +197,8 @@ function treeMetrics() {
     const viewportWidth = Math.max(window.innerWidth || 1200, 320);
 
     return mobile
-        ? { mobile, personWidth: 112, personHeight: 136, photoSize: 48, badgeSize: 26, spouseGap: 16, familyGap: 58, generationGap: 228, unionOffset: 90, maxRowWidth: Math.max(640, Math.min(900, viewportWidth * 1.65)) }
-        : { mobile, personWidth: 126, personHeight: 146, photoSize: 54, badgeSize: 28, spouseGap: 22, familyGap: 86, generationGap: 248, unionOffset: 96, maxRowWidth: Math.max(1250, Math.min(1800, viewportWidth * 0.9)) };
+        ? { mobile, personWidth: 112, personHeight: 136, photoSize: 48, badgeSize: 26, spouseGap: 16, familyGap: 72, generationGap: 228, unionOffset: 90, maxRowWidth: Number.POSITIVE_INFINITY }
+        : { mobile, personWidth: 126, personHeight: 146, photoSize: 54, badgeSize: 28, spouseGap: 22, familyGap: 104, generationGap: 248, unionOffset: 96, maxRowWidth: Number.POSITIVE_INFINITY };
 }
 
 function personElements(data, metrics) {

@@ -13,6 +13,7 @@ use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\ColorPicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -52,6 +53,24 @@ class FamilyTreeResource extends Resource
                 ->rules(['ascii', 'not_in:person,login,register,admin,manage,api'])
                 ->unique(ignoreRecord: true),
             TextInput::make('subtitle')->label('Подзаголовок'),
+            TextInput::make('seo_title')
+                ->label('SEO / OpenGraph заголовок')
+                ->maxLength(180)
+                ->helperText('Если пусто, используется название семьи. Показывается при отправке ссылки на дерево.'),
+            Textarea::make('seo_description')
+                ->label('SEO / OpenGraph описание')
+                ->rows(3)
+                ->maxLength(500)
+                ->helperText('Короткий красивый текст для предпросмотра ссылки. Личные данные в поисковики не открываются.'),
+            FileUpload::make('og_image_path')
+                ->label('Изображение OpenGraph')
+                ->image()
+                ->disk('public')
+                ->directory('trees/og')
+                ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/webp'])
+                ->maxSize(5120)
+                ->imagePreviewHeight('160')
+                ->helperText('Рекомендуемый размер 1200×630. Если не указано, используется семейный герб или общее изображение проекта.'),
             Select::make('owner_user_id')
                 ->label('Владелец')
                 ->relationship('owner', 'name')
@@ -71,6 +90,15 @@ class FamilyTreeResource extends Resource
                 'archived' => 'Архив',
                 'deleting' => 'Ожидает удаления',
             ])->required(),
+            Select::make('region')
+                ->label('Регион оплаты и хранения')
+                ->options([
+                    'eu' => 'Европа / EUR',
+                    'ru' => 'Россия / RUB',
+                ])
+                ->default('eu')
+                ->required()
+                ->helperText('Определяет валюту тарифов и набор способов оплаты. Для .ru и .рус обычно выбирайте Россия / RUB.'),
             TextInput::make('primary_domain')
                 ->label('Собственный домен')
                 ->dehydrateStateUsing(fn (?string $state): ?string => app(CustomDomainService::class)->normalise($state))
@@ -91,6 +119,8 @@ class FamilyTreeResource extends Resource
             TextColumn::make('slug')->label('Адрес')->copyable(),
             TextColumn::make('owner.name')->label('Владелец'),
             TextColumn::make('plan.name')->label('Тариф'),
+            TextColumn::make('region')->label('Регион')->badge()
+                ->formatStateUsing(fn (?string $state): string => $state === 'ru' ? 'Россия' : 'Европа'),
             TextColumn::make('people_count')->label('Людей')->counts('people'),
             TextColumn::make('storage_used_bytes')
                 ->label('Хранилище')

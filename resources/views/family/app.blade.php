@@ -2,25 +2,25 @@
 <html lang="{{ app()->getLocale() }}">
 <head>
     @php
-        $familySeoTitle = $familyName.' — '.__('miniapp.title_suffix');
-        $familySeoDescription = 'Приватное семейное дерево «'.$familyName.'»: фотографии, важные даты, родные и история рода.';
-        if (trim($familySubtitle)) {
-            $familySeoDescription .= ' '.trim($familySubtitle);
-        }
+        $familySeoTitle = trim((string) ($familySeoTitle ?? '')) ?: $familyName.' — '.__('miniapp.title_suffix');
+        $familySeoDescription = trim((string) ($familySeoDescription ?? '')) ?: 'Приватное семейное дерево «'.$familyName.'»: фотографии, важные даты, родные и история рода.';
         $familySeoDescription = \Illuminate\Support\Str::limit(
             trim(preg_replace('/\s+/u', ' ', strip_tags($familySeoDescription))),
             160,
             ''
         );
-        $familyCanonical = url()->current();
-        $familySeoImage = $familyCrestUrl
+        $familyCanonical = $familyCanonical ?? url()->current();
+        $familySeoImage = ($familyOgImageUrl ?? null)
+            ? url($familyOgImageUrl)
+            : (($familyCrestUrl ?? null)
             ? url($familyCrestUrl)
-            : asset('images/og-image.jpg');
+            : asset('images/og-image.jpg'));
     @endphp
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#f6f2e9">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="robots" content="noindex,nofollow,noarchive,noimageindex">
     <title>{{ $familySeoTitle }}</title>
     <meta name="description" content="{{ $familySeoDescription }}">
     <link rel="canonical" href="{{ $familyCanonical }}">

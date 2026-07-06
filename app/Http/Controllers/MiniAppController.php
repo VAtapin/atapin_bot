@@ -15,6 +15,7 @@ use App\Services\ColorContrast;
 use App\Services\FamilyBranchService;
 use App\Services\TreeCacheService;
 use App\Support\CurrentTree;
+use App\Support\FamilyTreeUrl;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -55,6 +56,14 @@ class MiniAppController extends Controller
             'familyName' => $tree?->name ?: Setting::value('family_name', __('miniapp.default_family_name')),
             'familySubtitle' => $tree?->subtitle ?: __('miniapp.default_family_subtitle'),
             'familyCrestUrl' => $tree?->crest_url,
+            'familyOgImageUrl' => $tree?->og_image_url,
+            'familySeoTitle' => $tree?->seo_title,
+            'familySeoDescription' => $tree?->seo_description,
+            'familyCanonical' => $tree
+                ? ($person
+                    ? app(FamilyTreeUrl::class)->person($tree, $person->id)
+                    : app(FamilyTreeUrl::class)->tree($tree))
+                : url()->current(),
             'familyAccent' => $tree?->accent_color ?: '#68734b',
             'familyAccentText' => app(ColorContrast::class)->foreground($tree?->accent_color),
             'telegramAuthError' => session('telegram_auth_error'),

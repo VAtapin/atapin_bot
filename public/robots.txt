@@ -1,4 +1,20 @@
 User-agent: *
-Disallow:
+Disallow: /admin/
+Disallow: /manage/
+Disallow: /api/
+Disallow: /family/
+Disallow: /person/
+Disallow: /media/
+Disallow: /invite/
+Disallow: /auth/
+Disallow: /account/
+Disallow: /trees
+Disallow: /access/
+Disallow: /billing/
+Disallow: /privacy-consent
+Disallow: /two-factor/
+Disallow: /login
+Disallow: /forgot-password
+Disallow: /reset-password
 
 Sitemap: https://idommoy.com/sitemap.xml

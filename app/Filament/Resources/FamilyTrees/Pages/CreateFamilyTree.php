@@ -21,13 +21,18 @@ class CreateFamilyTree extends CreateRecord
             app(OwnerPersonService::class)->ensure($this->record, $this->record->owner);
         }
         if ($this->record->plan_id) {
+            $price = $this->record->plan->priceFor(
+                $this->record->billingRegion(),
+                $this->record->billingCurrency(),
+            );
+
             Subscription::query()->firstOrCreate([
                 'tree_id' => $this->record->id,
                 'plan_id' => $this->record->plan_id,
             ], [
                 'status' => 'trial',
-                'amount' => 0,
-                'currency' => $this->record->plan->currency,
+                'amount' => $price?->price_monthly ?? $this->record->plan->price_monthly,
+                'currency' => $price?->currency ?? $this->record->plan->currency,
                 'starts_at' => now(),
                 'ends_at' => now()->addDays(30),
             ]);

@@ -21,8 +21,12 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
         'name',
         'slug',
         'subtitle',
+        'seo_title',
+        'seo_description',
+        'og_image_path',
         'status',
         'locale',
+        'region',
         'timezone',
         'primary_domain',
         'domain_status',
@@ -102,6 +106,13 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
     {
         return $this->crest_path
             ? Storage::disk('public')->url($this->crest_path)
+            : null;
+    }
+
+    public function getOgImageUrlAttribute(): ?string
+    {
+        return $this->og_image_path
+            ? Storage::disk('public')->url($this->og_image_path)
             : null;
     }
 
@@ -213,5 +224,15 @@ class FamilyTree extends Model implements HasCurrentTenantLabel, HasName
     public function isActive(): bool
     {
         return $this->status === 'active';
+    }
+
+    public function billingRegion(): string
+    {
+        return $this->region ?: 'eu';
+    }
+
+    public function billingCurrency(): string
+    {
+        return $this->billingRegion() === 'ru' ? 'RUB' : 'EUR';
     }
 }

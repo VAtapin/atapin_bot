@@ -9,6 +9,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Services\AnalyticsService;
 use App\Services\OwnerPersonService;
+use App\Services\PlatformRegionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -81,7 +82,10 @@ class RegistrationController extends Controller
         $data = $validator->validated();
         $privacyIpHash = $analytics->hashIp($request->ip());
 
-        [$user, $tree] = DB::transaction(function () use ($data, $privacyIpHash): array {
+        $region = app(PlatformRegionService::class)->regionForRequest($request);
+        $currency = app(PlatformRegionService::class)->currencyForRegion($region);
+
+        [$user, $tree] = DB::transaction(function () use ($data, $privacyIpHash, $region, $currency): array {
             $user = User::query()->create([
                 'name' => $data['name'],
                 'email' => mb_strtolower($data['email']),
@@ -94,6 +98,7 @@ class RegistrationController extends Controller
                 'privacy_ip_hash' => $privacyIpHash,
             ]);
             $plan = Plan::query()->where('code', 'family')->first();
+            $price = $plan?->priceFor($region, $currency);
             $tree = FamilyTree::query()->create([
                 'owner_user_id' => $user->id,
                 'plan_id' => $plan?->id,
@@ -101,6 +106,8 @@ class RegistrationController extends Controller
                 'slug' => Str::lower($data['tree_slug']),
                 'subtitle' => __('public.tagline'),
                 'status' => 'active',
+                'locale' => app(PlatformRegionService::class)->defaultLocaleForRegion($region),
+                'region' => $region,
                 'trial_ends_at' => now()->addDays(30),
             ]);
             app(OwnerPersonService::class)->ensure($tree, $user);
@@ -109,8 +116,8 @@ class RegistrationController extends Controller
                     'tree_id' => $tree->id,
                     'plan_id' => $plan->id,
                     'status' => 'trial',
-                    'amount' => $plan->price_monthly,
-                    'currency' => $plan->currency,
+                    'amount' => $price?->price_monthly ?? $plan->price_monthly,
+                    'currency' => $price?->currency ?? $plan->currency,
                     'starts_at' => now(),
                     'ends_at' => $tree->trial_ends_at,
                 ]);

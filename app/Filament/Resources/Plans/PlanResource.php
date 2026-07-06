@@ -40,12 +40,20 @@ class PlanResource extends Resource
             TextInput::make('name')->label('Название')->required(),
             TextInput::make('code')->label('Код')->required()->unique(ignoreRecord: true),
             Textarea::make('description')->label('Описание'),
-            TextInput::make('price_monthly')->label('Цена в месяц')->numeric()->required(),
-            TextInput::make('currency')->label('Валюта')->default('EUR')->required(),
+            TextInput::make('price_monthly')
+                ->label('Базовая цена в месяц')
+                ->numeric()
+                ->required()
+                ->helperText('Fallback для старых записей. Региональные цены задавайте в разделе «Цены тарифов».'),
+            TextInput::make('currency')
+                ->label('Базовая валюта')
+                ->default('EUR')
+                ->required()
+                ->helperText('Fallback. Для .com/.de используется EUR, для .ru/.рус — RUB из раздела «Цены тарифов».'),
             TextInput::make('provider_price_reference')
-                ->label('Stripe Price ID')
+                ->label('Базовый Stripe Price ID')
                 ->placeholder('price_…')
-                ->helperText('Создайте в Stripe ежемесячную recurring Price и вставьте её ID. Нужен для безопасной смены тарифа; при первой покупке без него цена создаётся Checkout автоматически.'),
+                ->helperText('Fallback. Региональный Price ID задавайте в разделе «Цены тарифов».'),
             TextInput::make('storage_limit_mb')
                 ->label('Хранилище, МБ')
                 ->helperText('1024 МБ = 1 ГБ. Значение хранится внутри системы в байтах.')

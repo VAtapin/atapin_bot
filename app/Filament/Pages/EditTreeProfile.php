@@ -44,7 +44,12 @@ class EditTreeProfile extends EditTenantProfile
                         ->maxLength(150),
                     TextInput::make('slug')
                         ->label('Адрес дерева')
-                        ->prefix(config('app.url').'/family/')
+                        ->prefix((bool) config('platform.family_subdomains.enabled', false)
+                            ? ((parse_url((string) config('app.url'), PHP_URL_SCHEME) ?: 'https').'://')
+                            : config('app.url').'/family/')
+                        ->suffix((bool) config('platform.family_subdomains.enabled', false)
+                            ? '.'.config('platform.family_subdomains.domain', config('platform.domains.international'))
+                            : null)
                         ->alphaDash()
                         ->rules(['ascii', 'not_in:person,login,register,admin,manage,api'])
                         ->unique(FamilyTree::class, 'slug', ignoreRecord: true)
@@ -92,6 +97,29 @@ class EditTreeProfile extends EditTenantProfile
                         ->helperText('PNG, JPEG или WebP до 5 МБ. Показывается в шапке семейного сайта.')
                         ->disk('public')
                         ->directory(fn (): string => 'trees/'.$this->tenant->id.'/branding')
+                        ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
+                        ->maxSize(5120)
+                        ->image()
+                        ->imagePreviewHeight('160'),
+                ])->columns(2),
+            Section::make('SEO и предпросмотр ссылки')
+                ->id('seo')
+                ->description('Семейные деревья закрыты от поисковиков, но эти поля улучшают вид ссылки в Telegram, MAX, VK и других мессенджерах.')
+                ->schema([
+                    TextInput::make('seo_title')
+                        ->label('Заголовок ссылки')
+                        ->maxLength(180)
+                        ->helperText('Если пусто, используется название семьи.'),
+                    Textarea::make('seo_description')
+                        ->label('Описание ссылки')
+                        ->rows(3)
+                        ->maxLength(500)
+                        ->helperText('Не вставляйте сюда личные данные: текст виден в предпросмотре ссылки.'),
+                    FileUpload::make('og_image_path')
+                        ->label('Изображение для предпросмотра')
+                        ->helperText('Лучше 1200×630. Если пусто, используется семейный герб или общее изображение проекта.')
+                        ->disk('public')
+                        ->directory(fn (): string => 'trees/'.$this->tenant->id.'/seo')
                         ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
                         ->maxSize(5120)
                         ->image()

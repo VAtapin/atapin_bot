@@ -7,6 +7,13 @@
     $seoImage = trim($__env->yieldContent('image')) ?: asset('images/og-image.jpg');
     $canonicalUrl = trim($__env->yieldContent('canonical')) ?: PublicSeo::canonical(request());
     $seoRobots = trim($__env->yieldContent('robots')) ?: 'index,follow,max-image-preview:large';
+    try {
+        $googleSiteVerification = \App\Models\PlatformSetting::value('google_site_verification');
+        $yandexSiteVerification = \App\Models\PlatformSetting::value('yandex_site_verification');
+    } catch (\Throwable) {
+        $googleSiteVerification = null;
+        $yandexSiteVerification = null;
+    }
     $schema = [
         '@context' => 'https://schema.org',
         '@type' => 'WebSite',
@@ -29,6 +36,12 @@
 <title>{{ $seoTitle }}</title>
 <meta name="description" content="{{ $seoDescription }}">
 <meta name="robots" content="{{ $seoRobots }}">
+@if(filled($googleSiteVerification))
+<meta name="google-site-verification" content="{{ $googleSiteVerification }}">
+@endif
+@if(filled($yandexSiteVerification))
+<meta name="yandex-verification" content="{{ $yandexSiteVerification }}">
+@endif
 <link rel="canonical" href="{{ $canonicalUrl }}">
 
 @foreach(PublicSeo::LOCALES as $alternateLocale)

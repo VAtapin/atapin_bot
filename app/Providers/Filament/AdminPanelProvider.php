@@ -15,6 +15,8 @@ use App\Filament\Resources\FaqItems\FaqItemResource;
 use App\Filament\Resources\HomePages\HomePageResource;
 use App\Filament\Resources\HomeSections\HomeSectionResource;
 use App\Filament\Resources\Payments\PaymentResource;
+use App\Filament\Resources\PaymentMethods\PaymentMethodResource;
+use App\Filament\Resources\PlanPrices\PlanPriceResource;
 use App\Filament\Resources\Plans\PlanResource;
 use App\Filament\Resources\PlatformSettings\PlatformSettingResource;
 use App\Filament\Resources\SmtpTestLogs\SmtpTestLogResource;
@@ -74,6 +76,8 @@ class AdminPanelProvider extends PanelProvider
                 UserResource::class,
                 SuperAdministratorResource::class,
                 PlanResource::class,
+                PlanPriceResource::class,
+                PaymentMethodResource::class,
                 SubscriptionResource::class,
                 PaymentResource::class,
                 PlatformSettingResource::class,

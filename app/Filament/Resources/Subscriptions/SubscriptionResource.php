@@ -120,7 +120,9 @@ class SubscriptionResource extends Resource
                 ->icon(Heroicon::OutlinedCreditCard)
                 ->visible(fn (Subscription $record): bool => ! auth()->user()?->is_super_admin
                     && PlatformSetting::value('billing_enabled', false)
-                    && $record->plan?->isPaid()
+                    && $record->plan
+                    && $record->tree
+                    && $record->plan->priceAmountFor($record->tree->billingRegion(), $record->tree->billingCurrency()) > 0.0
                     && ! in_array($record->status, ['active', 'trial'], true))
                 ->url(fn (Subscription $record): string => route('billing.checkout', [
                     'tree' => $record->tree,

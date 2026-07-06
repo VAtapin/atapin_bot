@@ -61,12 +61,17 @@ class PlatformSettingResource extends Resource
                 })
                 ->dehydrated(fn (?string $state, ?PlatformSetting $record): bool => ! $record?->is_secret || filled($state))
                 ->helperText(fn (?PlatformSetting $record): ?string => match ($record?->key) {
-                    'billing_enabled' => 'Включайте только после заполнения ключа Stripe и webhook-секрета. После включения владельцы деревьев увидят кнопку оплаты.',
-                    'billing_provider' => 'Для Stripe укажите значение stripe. Поддерживаются также manual и yookassa.',
-                    'billing_test_mode' => '1 — тестовые платежи с ключом sk_test_…; 0 — реальные платежи с ключом sk_live_….',
-                    'billing_secret_key' => 'Секретный API-ключ Stripe из Developers → API keys. Сохранённое значение намеренно не показывается повторно.',
-                    'billing_shop_id' => 'Для Stripe оставьте пустым. Поле используется только для Shop ID ЮKassa.',
-                    'billing_webhook_secret' => 'Stripe: signing secret вида whsec_… для endpoint '.url('/api/payments/webhook/stripe').'. Это не API-ключ.',
+                    'billing_enabled' => 'Главный выключатель онлайн-оплаты. Сами способы оплаты настраиваются отдельно в разделе «Способы оплаты».',
+                    'billing_provider' => 'Устаревший fallback для старой схемы. Новая схема берёт провайдера из раздела «Способы оплаты».',
+                    'billing_test_mode' => 'Устаревший fallback. Для новой схемы тестовый режим задаётся отдельно в каждом способе оплаты.',
+                    'billing_secret_key' => 'Устаревший fallback для Stripe/ЮKassa. Лучше хранить ключи в конкретном способе оплаты.',
+                    'billing_shop_id' => 'Устаревший fallback для ЮKassa. Лучше заполнить Shop ID в конкретном способе оплаты.',
+                    'billing_webhook_secret' => 'Устаревший fallback для webhook. Новые адреса смотрите в таблице «Способы оплаты».',
+                    'analytics_ga4_id' => 'GA4 Measurement ID из Google Analytics, например G-XXXXXXXXXX. Загружается на публичных страницах только после согласия посетителя.',
+                    'analytics_yandex_id' => 'Числовой ID счётчика Яндекс Метрики. Скрипт Метрики подключается только после согласия посетителя.',
+                    'analytics_vk_pixel_id' => 'ID пикселя VK Ads. Оставьте пустым, если реклама VK пока не используется.',
+                    'google_site_verification' => 'В Google Search Console выберите подтверждение через HTML meta tag и вставьте сюда только значение content.',
+                    'yandex_site_verification' => 'В Яндекс Вебмастере выберите подтверждение через meta tag и вставьте сюда только значение content.',
                     default => $record?->description,
                 })
                 ->placeholder(fn (?PlatformSetting $record): ?string => $record?->is_secret && filled($record->value)

@@ -28,8 +28,18 @@ class ListSubscriptions extends ListRecords
             ? number_format($plan->storage_limit_bytes / 1073741824, 1, ',', ' ').' ГБ'
             : number_format($plan->storage_limit_bytes / 1048576, 0, ',', ' ').' МБ';
 
+        $hasHigherPlan = Plan::query()
+            ->with('prices')
+            ->where('is_active', true)
+            ->get()
+            ->contains(fn (Plan $candidate): bool => $candidate->priceAmountFor(
+                $tree->billingRegion(),
+                $tree->billingCurrency(),
+            ) > $plan->priceAmountFor($tree->billingRegion(), $tree->billingCurrency()));
+
         return "Текущий тариф: {$plan->name}. Людей: {$peopleCount} из {$plan->people_limit}. "
-            ."Фото и файлы: {$storageUsed} из {$storageLimit}. Если места мало — выберите платный тариф выше.";
+            ."Фото и файлы: {$storageUsed} из {$storageLimit}."
+            .($hasHigherPlan ? ' Если места мало — выберите тариф выше.' : '');
     }
 
     protected function getHeaderActions(): array
@@ -44,16 +54,23 @@ class ListSubscriptions extends ListRecords
         $currentSubscription = $tree->currentSubscription();
         $currentPlan = $tree->effectivePlan();
 
+        $region = $tree->billingRegion();
+        $currency = $tree->billingCurrency();
+
         return Plan::query()
+            ->with('prices')
             ->where('is_active', true)
-            ->where('price_monthly', '>', 0)
             ->orderBy('sort_order')
             ->orderBy('price_monthly')
             ->get()
+            ->filter(fn (Plan $plan): bool => $plan->priceAmountFor($region, $currency) > 0.0)
             ->map(function (Plan $plan) use ($tree, $currentPlan, $currentSubscription): Action {
+                $region = $tree->billingRegion();
+                $currency = $tree->billingCurrency();
+                $amount = $plan->priceAmountFor($region, $currency);
                 $isCurrent = (int) $currentPlan?->id === (int) $plan->id;
                 $canPayCurrent = $isCurrent
-                    && $plan->isPaid()
+                    && $amount > 0.0
                     && $currentSubscription
                     && in_array($currentSubscription->status, ['trial', 'past_due'], true)
                     && blank($currentSubscription->provider_reference);
@@ -66,7 +83,7 @@ class ListSubscriptions extends ListRecords
                         ? 'Оплатить «'.$plan->name.'»'
                         : ($isCurrent
                             ? 'Текущий тариф: '.$plan->name
-                            : 'Перейти на «'.$plan->name.'»'))
+                            : 'Перейти на «'.$plan->name.'» — '.number_format($amount, 2, ',', ' ').' '.$currency.'/мес.'))
                     ->icon($isCurrent && ! $canPayCurrent ? 'heroicon-o-check-circle' : 'heroicon-o-arrow-up-circle')
                     ->color($isCurrent && ! $canPayCurrent ? 'gray' : 'success')
                     ->disabled($isCurrent && ! $canPayCurrent)
