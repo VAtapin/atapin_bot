@@ -11,7 +11,7 @@
             <a class="button secondary"
                href="{{ in_array($membership->role, ['owner', 'moderator'], true)
                     ? '/manage/'.$membership->tree->slug
-                    : route('family.tree', $membership->tree) }}">
+                    : app(\App\Support\FamilyTreeUrl::class)->tree($membership->tree) }}">
                 {{ $membership->tree->name }} — {{ \App\Models\TreeMembership::ROLES[$membership->role] ?? $membership->role }}
                 @if($membership->tree->status === 'deleting')
                     · {{ __('public.trees.deleting', ['date' => $membership->tree->deletion_scheduled_at?->format('d.m.Y')]) }}

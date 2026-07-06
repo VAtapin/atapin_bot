@@ -4,7 +4,25 @@ return [
     'name' => env('PLATFORM_NAME', 'Я и дом мой'),
     'subtitle' => env('PLATFORM_SUBTITLE', 'Семейная история и память рода'),
     'domains' => [
-        'international' => env('PLATFORM_DOMAIN_COM', 'idommoy.com'),
+        'international' => env('PLATFORM_DOMAIN', env('PLATFORM_DOMAIN_COM', 'idommoy.com')),
+    ],
+    'family_subdomains' => [
+        'enabled' => (bool) env('FAMILY_SUBDOMAINS_ENABLED', false),
+        'domain' => env('FAMILY_SUBDOMAIN_DOMAIN', env('PLATFORM_DOMAIN', env('PLATFORM_DOMAIN_COM', 'idommoy.com'))),
+        'reserved' => [
+            'www',
+            'admin',
+            'api',
+            'app',
+            'mail',
+            'webmail',
+            'ftp',
+            'ipv4',
+            'ipv6',
+            'ns1',
+            'ns2',
+            'ns3',
+        ],
     ],
     'locale_domains' => [
         'de' => env('PLATFORM_DOMAIN_DE', 'idommoy.de'),

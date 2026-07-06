@@ -7,6 +7,7 @@ use App\Services\CustomDomainService;
 use App\Services\CustomTelegramBotService;
 use App\Services\TreeDeletionService;
 use App\Services\TreeStorageService;
+use App\Support\FamilyTreeUrl;
 use Filament\Actions\Action;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\FileUpload;
@@ -158,10 +159,7 @@ class EditTreeProfile extends EditTenantProfile
                     TextInput::make('_bot_mini_app_url')
                         ->label('URL для Configure Mini App в BotFather')
                         ->afterStateHydrated(fn (TextInput $component) => $component->state(
-                            route('family.tree', [
-                                'tree' => $this->tenant->slug,
-                                'platform' => 'telegram',
-                            ]),
+                            app(FamilyTreeUrl::class)->tree($this->tenant, ['platform' => 'telegram']),
                         ))
                         ->helperText('Обязательно откройте этого бота в @BotFather → Bot Settings → Configure Mini App и укажите данный URL. Без этого Telegram покажет BOT_INVALID при запуске из группы.')
                         ->disabled()

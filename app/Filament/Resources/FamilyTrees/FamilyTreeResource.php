@@ -6,6 +6,7 @@ use App\Filament\Resources\FamilyTrees\Pages\CreateFamilyTree;
 use App\Filament\Resources\FamilyTrees\Pages\EditFamilyTree;
 use App\Filament\Resources\FamilyTrees\Pages\ListFamilyTrees;
 use App\Models\FamilyTree;
+use App\Support\FamilyTreeUrl;
 use App\Services\CustomDomainService;
 use App\Services\TreeDeletionService;
 use BackedEnum;
@@ -109,7 +110,7 @@ class FamilyTreeResource extends Resource
                 ->url(fn (FamilyTree $record): string => '/manage/'.$record->slug),
             Action::make('open')
                 ->label('Открыть сайт')
-                ->url(fn (FamilyTree $record): string => route('family.tree', $record))
+                ->url(fn (FamilyTree $record): string => app(FamilyTreeUrl::class)->tree($record))
                 ->openUrlInNewTab(),
             Action::make('export')
                 ->label('Экспорт')

@@ -28,6 +28,7 @@ use App\Http\Controllers\TreeInvitationController;
 use App\Http\Controllers\TreePreviewController;
 use App\Http\Controllers\TwoFactorController;
 use App\Models\FamilyTree;
+use App\Models\Person;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -42,7 +43,22 @@ Route::get('/analytics/pending', PendingAnalyticsEventsController::class)
     ->middleware(['auth', 'throttle:30,1'])
     ->name('analytics.pending');
 
-Route::get('/', fn () => redirect()->route('home', ['locale' => app()->getLocale()]));
+Route::get('/', function (Request $request) {
+    if ($tree = $request->attributes->get('familyTree')) {
+        return app(MiniAppController::class)->index($request, $tree);
+    }
+
+    return redirect()->route('home', ['locale' => app()->getLocale()]);
+});
+Route::get('/person/{person}', function (Request $request, Person $person) {
+    $tree = $request->attributes->get('familyTree');
+    abort_unless($tree && (
+        $request->attributes->has('familySubdomainTree')
+        || $request->attributes->has('customDomainTree')
+    ), 404);
+
+    return app(MiniAppController::class)->index($request, $tree, $person);
+})->middleware('family.tree')->name('family.domain.person');
 Route::prefix('{locale}')
     ->where(['locale' => 'ru|de|en|uk'])
     ->group(function (): void {

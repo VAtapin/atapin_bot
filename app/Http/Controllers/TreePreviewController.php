@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FamilyTree;
+use App\Support\FamilyTreeUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -19,6 +20,6 @@ class TreePreviewController extends Controller
             $request->session()->put($key, $mode);
         }
 
-        return redirect()->route('family.tree', $tree);
+        return redirect()->to(app(FamilyTreeUrl::class)->tree($tree));
     }
 }

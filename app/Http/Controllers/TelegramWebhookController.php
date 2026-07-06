@@ -19,6 +19,7 @@ use App\Services\TelegramWebLogin;
 use App\Services\TreeAccessService;
 use App\Services\UserCredentialService;
 use App\Support\CurrentTree;
+use App\Support\FamilyTreeUrl;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -1179,21 +1180,16 @@ class TelegramWebhookController extends Controller
         $tree = $this->currentTree->get();
 
         return $tree
-            ? route('family.tree.person', [
-                'tree' => $tree,
-                'person' => $focusId,
-                'platform' => 'telegram',
-            ])
+            ? app(FamilyTreeUrl::class)->person($tree, $focusId, ['platform' => 'telegram'])
             : route('family.person', ['person' => $focusId, 'platform' => 'telegram']);
     }
 
     private function treeBaseUrl(): string
     {
-        return $this->currentTree->get()
-            ? route('family.tree', [
-                'tree' => $this->currentTree->get(),
-                'platform' => 'telegram',
-            ])
+        $tree = $this->currentTree->get();
+
+        return $tree
+            ? app(FamilyTreeUrl::class)->tree($tree, ['platform' => 'telegram'])
             : config('services.telegram.mini_app_url');
     }
 }

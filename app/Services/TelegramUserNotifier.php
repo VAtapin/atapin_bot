@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\TelegramUser;
+use App\Support\FamilyTreeUrl;
 use Throwable;
 
 class TelegramUserNotifier
@@ -72,7 +73,7 @@ class TelegramUserNotifier
                         [
                             'text' => '🌳 Открыть семейный архив',
                             'web_app' => ['url' => $user->currentTree
-                                ? route('family.tree', $user->currentTree)
+                                ? app(FamilyTreeUrl::class)->tree($user->currentTree)
                                 : config('services.telegram.mini_app_url')],
                         ],
                     ]],

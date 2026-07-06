@@ -5,10 +5,13 @@ namespace App\Services;
 use App\Models\FamilyTree;
 use App\Models\TreeMembership;
 use App\Models\User;
+use App\Support\FamilyTreeUrl;
 use Illuminate\Http\RedirectResponse;
 
 class AuthRedirector
 {
+    public function __construct(private readonly FamilyTreeUrl $familyTreeUrl) {}
+
     public function redirect(User $user, ?FamilyTree $requestedTree = null): RedirectResponse
     {
         if (! $user->privacy_accepted_at) {
@@ -19,7 +22,7 @@ class AuthRedirector
 
         if ($requestedTree) {
             if ($user->is_super_admin) {
-                return redirect()->route('family.tree', $requestedTree);
+                return redirect()->to($this->familyTreeUrl->tree($requestedTree));
             }
 
             $membership = $user->memberships()
@@ -70,6 +73,6 @@ class AuthRedirector
 
         return in_array($membership->role, ['owner', 'moderator'], true)
             ? redirect('/manage/'.$tree->slug)
-            : redirect()->route('family.tree', $tree);
+            : redirect()->to($this->familyTreeUrl->tree($tree));
     }
 }

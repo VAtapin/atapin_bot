@@ -17,12 +17,6 @@ const dateLocale = ({ ru: 'ru-RU', de: 'de-DE', en: 'en-US', uk: 'uk-UA' })[
 const mourningRibbonImage = `data:image/svg+xml;utf8,${encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M10 43L43 10" stroke="#171717" stroke-width="11" stroke-linecap="square"/></svg>',
 )}`;
-const branchContinuationImage = `data:image/svg+xml;utf8,${encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect x="5" y="12" width="15" height="10" rx="4" fill="#77859a"/><rect x="28" y="12" width="15" height="10" rx="4" fill="#77859a"/><path d="M12.5 22v10h23V22" fill="none" stroke="#77859a" stroke-width="4" stroke-linecap="round"/></svg>',
-)}`;
-const birthdayCandleImage = `data:image/svg+xml;utf8,${encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M24 4c6 7 6 12 0 17-6-5-6-10 0-17Z" fill="#f3a51f"/><rect x="17" y="20" width="14" height="23" rx="4" fill="#e95f73"/><path d="M18 28h12M18 35h12" stroke="#fff" stroke-width="3"/></svg>',
-)}`;
 const telegram = window.Telegram?.WebApp;
 const telegramLaunchParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
 const telegramInitData = telegram?.initData
@@ -198,8 +192,8 @@ function treeMetrics() {
     const mobile = window.matchMedia('(max-width: 700px)').matches;
 
     return mobile
-        ? { mobile, personWidth: 132, personHeight: 158, photoSize: 58, badgeSize: 28, spouseGap: 18, familyGap: 58, generationGap: 255, unionOffset: 104 }
-        : { mobile, personWidth: 142, personHeight: 172, photoSize: 70, badgeSize: 30, spouseGap: 24, familyGap: 92, generationGap: 275, unionOffset: 112 };
+        ? { mobile, personWidth: 112, personHeight: 138, photoSize: 54, badgeSize: 26, spouseGap: 16, familyGap: 58, generationGap: 235, unionOffset: 92 }
+        : { mobile, personWidth: 122, personHeight: 148, photoSize: 60, badgeSize: 28, spouseGap: 22, familyGap: 86, generationGap: 252, unionOffset: 98 };
 }
 
 function personElements(data, metrics) {
@@ -242,7 +236,7 @@ function personElements(data, metrics) {
                 ].filter(Boolean).join(' '),
                 position: {
                     x: position.x,
-                    y: position.y - (metrics.personHeight / 2) + (metrics.photoSize / 2) + 14,
+                    y: position.y - (metrics.personHeight / 2) + (metrics.photoSize / 2) + 12,
                 },
                 grabbable: false,
                 selectable: false,
@@ -278,7 +272,6 @@ function personElements(data, metrics) {
                     id: `continuation-${person.id}`,
                     kind: 'continuation',
                     personId: String(person.id),
-                    image: branchContinuationImage,
                     icon: '⇱',
                 },
                 classes: 'branch-continuation',
@@ -302,8 +295,7 @@ function personElements(data, metrics) {
                     personId: String(person.id),
                     recipient: person.name,
                     date: person.birthday.date,
-                    image: birthdayCandleImage,
-                    icon: '🕯',
+                    icon: '🎂',
                 },
                 classes: 'birthday-candle',
                 position: {
@@ -650,14 +642,18 @@ async function renderTree(data) {
                     label: 'data(label)',
                     color: '#2b251e',
                     'font-family': 'system-ui, sans-serif',
-                    'font-size': metrics.mobile ? 11 : 12,
+                    'font-size': metrics.mobile ? 9 : 10,
                     'font-weight': 700,
                     'text-wrap': 'wrap',
-                    'text-max-width': metrics.personWidth - 20,
-                    'text-valign': 'bottom',
+                    'text-max-width': metrics.personWidth - 12,
+                    'text-valign': 'center',
                     'text-halign': 'center',
                     'text-margin-x': 0,
-                    'text-margin-y': -16,
+                    'text-margin-y': (metrics.photoSize / 2) + 24,
+                    'text-background-color': '#fffdf8',
+                    'text-background-opacity': 0.9,
+                    'text-background-shape': 'round-rectangle',
+                    'text-background-padding': 3,
                     'overlay-opacity': 0,
                     'shadow-blur': 14,
                     'shadow-color': '#6f6049',
@@ -667,9 +663,7 @@ async function renderTree(data) {
             },
             {
                 selector: 'node.person.has-photo',
-                style: metrics.mobile ? {} : {
-                    'text-margin-y': -18,
-                },
+                style: {},
             },
             {
                 selector: 'node.person-photo',
@@ -766,13 +760,9 @@ async function renderTree(data) {
                     height: metrics.badgeSize,
                     shape: 'ellipse',
                     'background-color': '#fffdf8',
-                    'background-image': 'data(image)',
-                    'background-fit': 'contain',
-                    'background-width': metrics.badgeSize - 8,
-                    'background-height': metrics.badgeSize - 8,
                     label: 'data(icon)',
                     color: '#2b251e',
-                    'font-size': metrics.badgeSize - 12,
+                    'font-size': metrics.badgeSize - 10,
                     'font-weight': 800,
                     'text-valign': 'center',
                     'text-halign': 'center',
