@@ -140,7 +140,7 @@ class FamilyTreeResource extends Resource
                 ->url(fn (FamilyTree $record): string => '/manage/'.$record->slug),
             Action::make('open')
                 ->label('Открыть сайт')
-                ->url(fn (FamilyTree $record): string => app(FamilyTreeUrl::class)->tree($record))
+                ->url(fn (FamilyTree $record): string => route('tree.preview', [$record, 'normal']))
                 ->openUrlInNewTab(),
             Action::make('export')
                 ->label('Экспорт')
