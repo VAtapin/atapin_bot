@@ -152,6 +152,11 @@ class PublicAuthController extends Controller
 
     private function requestedTree(Request $request): ?FamilyTree
     {
+        $attributeTree = $request->attributes->get('familyTree');
+        if ($attributeTree instanceof FamilyTree && $attributeTree->isActive()) {
+            return $attributeTree;
+        }
+
         $slug = $request->string('tree_slug')->toString()
             ?: $request->string('tree')->toString();
 

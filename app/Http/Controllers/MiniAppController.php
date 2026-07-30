@@ -69,7 +69,8 @@ class MiniAppController extends Controller
             'telegramAuthError' => session('telegram_auth_error'),
             'loginError' => session('login_error') ?: session('errors')?->first('login'),
             'initialFocusId' => $person?->id,
-            'hasBrowserSession' => $request->session()->has('family_person_id')
+            'hasBrowserSession' => (bool) $request->user()
+                || $request->session()->has('family_person_id')
                 || $request->session()->has('family_telegram_user_id')
                 || $request->session()->has('family_user_id'),
             'familyAppConfig' => [

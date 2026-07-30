@@ -13,6 +13,15 @@ class TreeAccessService
 {
     public function membership(User $user, FamilyTree $tree): TreeMembership
     {
+        if ($user->is_super_admin) {
+            return tap(new TreeMembership([
+                'tree_id' => $tree->id,
+                'user_id' => $user->id,
+                'role' => 'super_admin',
+                'status' => 'approved',
+            ]), fn (TreeMembership $membership) => $membership->setRelation('tree', $tree));
+        }
+
         return TreeMembership::query()->firstOrCreate(
             ['tree_id' => $tree->id, 'user_id' => $user->id],
             ['role' => 'guest', 'status' => 'pending'],

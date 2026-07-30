@@ -49,6 +49,10 @@ class ResolveCustomDomain
                 $request->attributes->set('familyTree', $tree);
                 $request->attributes->set('familySubdomainTree', $tree);
 
+                if ($request->is('family/login') || $request->is('family/logout')) {
+                    return $next($request);
+                }
+
                 if ($request->is('family/*') || $request->is('family')) {
                     return redirect()->to('/');
                 }
@@ -69,6 +73,10 @@ class ResolveCustomDomain
         $this->currentTree->set($tree);
         $request->attributes->set('familyTree', $tree);
         $request->attributes->set('customDomainTree', $tree);
+
+        if ($request->is('family/login') || $request->is('family/logout')) {
+            return $next($request);
+        }
 
         if ($request->is('family/*') || $request->is('family')) {
             return redirect()->to('/');

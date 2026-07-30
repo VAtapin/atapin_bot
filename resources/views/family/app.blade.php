@@ -82,12 +82,9 @@
                             <span class="action-icon" aria-hidden="true">⚙</span><span class="action-label">{{ __('miniapp.manage') }}</span>
                         </a>
                     @endif
-                    <form method="post" action="{{ route('family.logout') }}">
-                        @csrf
-                        <button class="logout-button" type="submit" title="{{ __('miniapp.logout') }}">
-                            <span class="action-icon" aria-hidden="true">↪</span><span class="action-label">{{ __('miniapp.logout') }}</span>
-                        </button>
-                    </form>
+                    <a class="logout-button" href="{{ url('/family/logout') }}" title="{{ __('miniapp.logout') }}">
+                        <span class="action-icon" aria-hidden="true">↪</span><span class="action-label">{{ __('miniapp.logout') }}</span>
+                    </a>
                 @endif
             </div>
         </header>

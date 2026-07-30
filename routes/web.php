@@ -183,5 +183,5 @@ Route::post('/auth/telegram/logout', [TelegramLoginController::class, 'logout'])
     ->name('telegram.logout');
 Route::post('/family/login', [FamilyAuthController::class, 'login'])
     ->name('family.login');
-Route::post('/family/logout', [FamilyAuthController::class, 'logout'])
+Route::match(['get', 'post'], '/family/logout', [FamilyAuthController::class, 'logout'])
     ->name('family.logout');

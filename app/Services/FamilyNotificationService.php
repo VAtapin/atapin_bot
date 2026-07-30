@@ -9,6 +9,7 @@ use App\Models\FamilyTree;
 use App\Models\Person;
 use App\Models\TreeMembership;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
@@ -21,7 +22,7 @@ class FamilyNotificationService
         $tree = $membership->tree;
         $text = "👋 <b>Новый участник дерева</b>\n\n"
             .'Дерево: <b>'.e($tree->name)."</b>\n"
-            .'Пользователь: '.e($membership->user->name)."\n"
+            .'Пользователь: '.$this->userTelegramLink($membership->user)."\n"
             .'Статус: ожидает подтверждения.';
         $this->sendToManagers($tree, $text, [
             'reply_markup' => [
@@ -88,11 +89,16 @@ class FamilyNotificationService
         $change->loadMissing(['tree', 'user']);
         $subject = $this->changeSubject($change);
         $details = $this->changeDetails($change);
+
+        if ($details === '' && $change->action === 'updated') {
+            return;
+        }
+
         $this->sendToManagers(
             $change->tree,
             "✏️ <b>Изменение в семейном дереве</b>\n\n"
             .'Дерево: <b>'.e($change->tree->name)."</b>\n"
-            .'Кто изменил: <b>'.e($change->user?->name ?: 'не определено')."</b>\n"
+            .'Кто изменил: '.$this->userTelegramLink($change->user)."\n"
             .'Что: <b>'.e($subject)."</b>\n"
             .'Действие: '.e($this->changeAction($change->action))
             .($details !== '' ? "\n\n".$details : ''),
@@ -286,6 +292,11 @@ class FamilyNotificationService
             'created_at',
             'updated_at',
             'deleted_at',
+            'last_seen_at',
+            'last_login_at',
+            'last_web_login_at',
+            'pending_command',
+            'mini_app_action',
         ], true);
     }
 
@@ -312,8 +323,59 @@ class FamilyNotificationService
             'person_id' => $this->personName($value) ?: '#'.$value,
             'user_id', 'approved_by_user_id' => $this->userName($value) ?: '#'.$value,
             'is_active', 'notify_birthdays' => $value ? 'включено' : 'выключено',
-            default => is_bool($value) ? ($value ? 'да' : 'нет') : (string) $value,
+            default => $this->looksLikeDateTimeField($field)
+                ? $this->formatDateTime($value)
+                : (is_bool($value) ? ($value ? 'да' : 'нет') : (string) $value),
         };
+    }
+
+    private function userTelegramLink(?User $user): string
+    {
+        if (! $user) {
+            return '<b>не определено</b>';
+        }
+
+        $identity = ExternalIdentity::query()
+            ->where('user_id', $user->id)
+            ->where('provider', 'telegram')
+            ->first();
+
+        $name = e($user->name ?: 'пользователь #'.$user->id);
+
+        if (! $identity) {
+            return '<b>'.$name.'</b>';
+        }
+
+        $username = trim((string) $identity->username);
+        $telegramId = trim((string) $identity->provider_user_id);
+
+        if ($username !== '') {
+            $username = ltrim($username, '@');
+
+            return '<a href="https://t.me/'.e($username).'"><b>'.$name.'</b></a> <code>@'.e($username).'</code>';
+        }
+
+        if ($telegramId !== '') {
+            return '<a href="tg://user?id='.e($telegramId).'"><b>'.$name.'</b></a> <code>ID '.e($telegramId).'</code>';
+        }
+
+        return '<b>'.$name.'</b>';
+    }
+
+    private function looksLikeDateTimeField(string $field): bool
+    {
+        return str_ends_with($field, '_at') || str_ends_with($field, '_time');
+    }
+
+    private function formatDateTime(mixed $value): string
+    {
+        try {
+            return Carbon::parse($value)
+                ->timezone(config('app.timezone') ?: 'Europe/Berlin')
+                ->format('d.m.Y H:i');
+        } catch (Throwable) {
+            return (string) $value;
+        }
     }
 
     private function personName(mixed $id): ?string
