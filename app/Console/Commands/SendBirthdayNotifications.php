@@ -60,7 +60,7 @@ class SendBirthdayNotifications extends Command
 
                 $lines = $people->map(function (Person $person) use ($now): string {
                     $age = $person->birth_date
-                        ? (int) floor($person->birth_date->copy()->startOfDay()->diffInYears($now->copy()->startOfDay()))
+                        ? (int) $now->year - (int) $person->birth_date->year
                         : null;
                     $ageText = $age
                         ? ' — исполняется '.$this->yearsText($age)
@@ -70,7 +70,7 @@ class SendBirthdayNotifications extends Command
                 })->implode("\n");
                 $anniversaryLines = $anniversaries->map(function (Partnership $partnership) use ($now): string {
                     $years = $partnership->started_at
-                        ? (int) floor($partnership->started_at->copy()->startOfDay()->diffInYears($now->copy()->startOfDay()))
+                        ? (int) $now->year - (int) $partnership->started_at->year
                         : null;
                     $yearsText = $years ? $this->yearsText($years) : 'годовщина';
 

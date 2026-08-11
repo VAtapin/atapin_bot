@@ -728,7 +728,7 @@ class MiniAppController extends Controller
                     'name' => $person->full_name,
                     'date' => $next->toDateString(),
                     'days' => $today->diffInDays($next),
-                    'age' => $person->birth_date->diffInYears($next),
+                    'age' => (int) $next->year - (int) $person->birth_date->year,
                     'photo_url' => $this->personThumbnail($person),
                 ];
             })
@@ -763,7 +763,7 @@ class MiniAppController extends Controller
                     ]),
                     'date' => $next->toDateString(),
                     'days' => $today->diffInDays($next),
-                    'years' => $partnership->started_at->diffInYears($next),
+                    'years' => (int) $next->year - (int) $partnership->started_at->year,
                     'partner_one' => [
                         'id' => (string) $partnership->partnerOne->id,
                         'name' => $partnership->partnerOne->full_name,

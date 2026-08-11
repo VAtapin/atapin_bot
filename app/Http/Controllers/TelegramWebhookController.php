@@ -673,7 +673,7 @@ class TelegramWebhookController extends Controller
             $when = $item['days'] === 0 ? 'сегодня' : $date->translatedFormat('j F');
 
             $birthDate = $person->birth_date->format('d.m.Y');
-            $age = $person->birth_date->diffInYears($date);
+            $age = (int) $date->year - (int) $person->birth_date->year;
 
             return "🎂 <b>{$name}</b>\n"
                 ."   📅 {$birthDate} · исполнится {$age}\n"
