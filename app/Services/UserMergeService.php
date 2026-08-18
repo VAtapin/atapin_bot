@@ -95,9 +95,27 @@ class UserMergeService
 
             $source->externalIdentities()->update(['user_id' => $target->id]);
             DB::table('telegram_users')->where('user_id', $source->id)->update(['user_id' => $target->id]);
+
+            // The membership observer runs before the source Telegram rows are reassigned,
+            // so synchronize the moved Telegram identities with the final target memberships.
+            $target->memberships()->get()->each(function ($membership) use ($target): void {
+                DB::table('telegram_users')
+                    ->where('user_id', $target->id)
+                    ->where('current_tree_id', $membership->tree_id)
+                    ->update([
+                        'person_id' => $membership->person_id,
+                        'status' => $membership->status,
+                    ]);
+            });
+
             DB::table('payments')->where('user_id', $source->id)->update(['user_id' => $target->id]);
             DB::table('change_logs')->where('user_id', $source->id)->update(['user_id' => $target->id]);
             DB::table('tree_invitations')->where('created_by_user_id', $source->id)->update(['created_by_user_id' => $target->id]);
+
+            if (DB::getSchemaBuilder()->hasTable('telegram_account_link_tokens')) {
+                // Tokens issued for the superseded account must not be usable after the merge.
+                DB::table('telegram_account_link_tokens')->where('user_id', $source->id)->delete();
+            }
             if (DB::getSchemaBuilder()->hasTable('sessions')) {
                 DB::table('sessions')->where('user_id', $source->id)->delete();
             }
