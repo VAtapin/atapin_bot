@@ -197,23 +197,49 @@ class TreeMembershipResource extends Resource
                     : 'Это объединяет только учётные записи доступа, а не карточки людей в родословной. Все способы входа текущего дубля перейдут к выбранной основной записи.')
                 ->requiresConfirmation()
                 ->action(function (TreeMembership $record, array $data): void {
-                    $targetUser = $record->role === 'owner'
-                        ? $record->user
-                        : User::query()
-                            ->whereKey($data['merge_user_id'])
-                            ->whereNull('merged_at')
-                            ->firstOrFail();
-                    $sourceUser = $record->role === 'owner'
-                        ? User::query()
-                            ->whereKey($data['merge_user_id'])
-                            ->whereNull('merged_at')
-                            ->firstOrFail()
-                        : $record->user;
-
-                    $sourceName = $sourceUser?->name ?: $sourceUser?->email ?: 'дубль';
-                    $targetName = $targetUser?->name ?: $targetUser?->email ?: 'основная запись';
-
                     try {
+                        $selectedUserId = (int) ($data['merge_user_id'] ?? 0);
+                        if ($selectedUserId <= 0) {
+                            throw ValidationException::withMessages([
+                                'merge_user_id' => 'Выберите учётную запись для объединения.',
+                            ]);
+                        }
+
+                        if ($record->role === 'owner') {
+                            $targetUser = $record->user;
+                            $sourceUser = User::query()
+                                ->whereKey($selectedUserId)
+                                ->whereNull('merged_at')
+                                ->first();
+                        } else {
+                            $sourceUser = $record->user;
+                            $targetUser = User::query()
+                                ->whereKey($selectedUserId)
+                                ->whereNull('merged_at')
+                                ->first();
+                        }
+
+                        if (! $targetUser) {
+                            throw ValidationException::withMessages([
+                                'merge_user_id' => 'Основная учётная запись не найдена. Обновите страницу и выберите её заново.',
+                            ]);
+                        }
+
+                        if (! $sourceUser) {
+                            throw ValidationException::withMessages([
+                                'merge_user_id' => 'Дубль уже объединён либо больше не существует. Обновите страницу.',
+                            ]);
+                        }
+
+                        if ($sourceUser->is($targetUser)) {
+                            throw ValidationException::withMessages([
+                                'merge_user_id' => 'Нельзя объединить учётную запись саму с собой.',
+                            ]);
+                        }
+
+                        $sourceName = $sourceUser->name ?: $sourceUser->email ?: 'дубль';
+                        $targetName = $targetUser->name ?: $targetUser->email ?: 'основная запись';
+
                         app(UserMergeService::class)->merge($sourceUser, $targetUser, auth()->user());
 
                         Notification::make()
