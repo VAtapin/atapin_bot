@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\FamilyTree;
 use App\Models\Person;
+use App\Models\TelegramAccountLinkToken;
 use App\Models\TelegramUser;
 use App\Models\TreeMembership;
 use App\Models\User;
@@ -50,6 +51,11 @@ class UserMergeServiceTest extends TestCase
             'last_name' => 'Atapin',
             'status' => 'approved',
         ]);
+        TelegramAccountLinkToken::query()->create([
+            'user_id' => $duplicate->id,
+            'token_hash' => hash('sha256', 'stale-link-token'),
+            'expires_at' => now()->addHour(),
+        ]);
 
         app(UserMergeService::class)->merge($duplicate, $owner, $owner);
 
@@ -68,6 +74,12 @@ class UserMergeServiceTest extends TestCase
         $this->assertDatabaseHas('telegram_users', [
             'telegram_user_id' => 2090702029,
             'user_id' => $owner->id,
+            'current_tree_id' => $tree->id,
+            'person_id' => $person->id,
+            'status' => 'approved',
+        ]);
+        $this->assertDatabaseMissing('telegram_account_link_tokens', [
+            'user_id' => $duplicate->id,
         ]);
         $this->assertDatabaseHas('users', [
             'id' => $duplicate->id,
